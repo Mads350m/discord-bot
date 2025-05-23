@@ -24,6 +24,16 @@ const commands = [
     description: "Promote users who meet rank requirements or are manually flagged"
   },
   {
+    name: "stats",
+    description: "Check the stats of a user",
+    options: [
+      {
+       name: "userid",
+       description: "The user to check",
+       type: 6,
+       required: true
+    },
+    {
     name: "adduser",
     description: "Add or update a user in the Sheets roster based on Discord info",
     options: [
