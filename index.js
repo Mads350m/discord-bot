@@ -381,8 +381,13 @@ client.on("interactionCreate", async interaction => {
     try {
       const targetUser = options.getUser("userid");
 
-      // 🔄 Load sheet rows
-      await sheet.loadCells?.(); // optional depending on how your API is used
+      const SHEET_ID = "1Qp8GrvR4hfCsJRnPHMDQUn2ckPLaWBuqZtzgf5UvSm4";
+      const SHEET_NAME = "Roster";
+
+      const doc = new GoogleSpreadsheet(SHEET_ID);
+      await doc.useServiceAccountAuth(creds);
+      await doc.loadInfo();
+      const sheet = doc.sheetsByTitle[SHEET_NAME];
       const rows = await sheet.getRows();
 
       // 🔎 Find matching row using DiscordUserID
@@ -408,12 +413,12 @@ client.on("interactionCreate", async interaction => {
     } catch (err) {
       console.error("❌ Error handling /stats command:", err);
       return interaction.reply({
-        content: "Something went wrong while retrieving stats.",
+        content: "⚠️ Something went wrong while retrieving stats.",
         ephemeral: true
       });
     }
   }
-  
 });
+
 // 4. Login
 client.login(process.env.DISCORD_TOKEN);
