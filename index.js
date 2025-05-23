@@ -370,7 +370,41 @@ client.on("interactionCreate", async interaction => {
       await interaction.editReply({ content: "⚠️ Failed to process promotions." });
     }
   }
+// === /stats USERID ===
+if (commandName === "stats") {
+  // 🔹 1. Get the target user from the command option
+  const targetUser = options.getUser("userid");
 
+  // 🔹 2. Load rows from the Google Sheet
+  await sheet.loadCells(); // if needed
+  const rows = await sheet.getRows();
+
+  // 🔹 3. Try to find the row for this Discord user
+  const row = rows.find(r => r.DiscordUserID === targetUser.id);
+
+  // 🔹 4. If not found, reply with error
+  if (!row) {
+    return interaction.reply({
+      content: `❌ ${targetUser} is not in the roster.`,
+      ephemeral: true
+    });
+  }
+
+  // 🔹 5. Extract stats from the row
+  const rank = row.OldRank || "Unknown";
+  const pointsDiff = row.PointsDiff ?? "N/A";
+  const kills = row.Kills ?? 0;
+  const deaths = row.Deaths ?? 0;
+
+  // 🔹 6. Build the response
+  const promoMsg = `${targetUser} is currently a ${rank} and ${pointsDiff} from a promotion!`;
+  const statsMsg = `${targetUser} currently has ${kills} kills and ${deaths} deaths.`;
+
+  // 🔹 7. Reply to the user
+  return interaction.reply({
+    content: `${promoMsg}\n${statsMsg}`
+  });
+}
 
 });
 // 4. Login
