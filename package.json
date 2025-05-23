@@ -1,0 +1,13 @@
+{
+  "name": "discord-regiment-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.0.0",
+    "google-spreadsheet": "^3.3.0"
+  }
+}
