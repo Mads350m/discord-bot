@@ -1,8 +1,7 @@
-const { REST, Routes, SlashCommandBuilder } = require("discord.js");
+console.log("⚙️ Starting deploy-commands.js");
 
-// No dotenv required in Replit — Replit loads secrets automatically
+const { REST, Routes } = require("discord.js");
 
-// Define the /enlist command
 const commands = [
   {
     name: "enlist",
@@ -31,34 +30,30 @@ const commands = [
       {
         name: "userid",
         description: "The user to add or update",
-        type: 6, // USER
+        type: 6,
         required: true
       }
     ]
   }
 ];
 
-// Pull secrets directly from Replit environment
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
 const guildId = process.env.GUILD_ID;
 
-// Create REST client and deploy command
+console.log("🔑 ENV Vars:", { tokenExists: !!token, clientId, guildId });
+
 const rest = new REST({ version: "10" }).setToken(token);
 
 (async () => {
   try {
-    console.log("Registering slash commands...");
-
+    console.log("📡 Registering slash commands...");
     await rest.put(
       Routes.applicationGuildCommands(clientId, guildId),
       { body: commands }
     );
-
     console.log("✅ Slash commands registered!");
   } catch (err) {
     console.error("❌ Failed to register commands:", err);
   }
-  
 })();
-
