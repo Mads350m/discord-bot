@@ -28,7 +28,7 @@ client.on("interactionCreate", async interaction => {
   const BOTLOGS_CHANNEL_ID = "1374447452362510336";
 
   // === /enlist ===
-  if (interaction.commandName === "enlist") {
+  if (commandName === "enlist") {
     const ADMIN_ROLE = "Admin";
     const VERIFIED_ROLE = "Verified";
     const ENLIST_CHANNEL = "enlistment";
@@ -37,10 +37,10 @@ client.on("interactionCreate", async interaction => {
     const NEXT_RANK_POINTS = 20;
 
     try {
-      await interaction.deferReply({ flags: 1 << 6 }); // Defer immediately, make ephemeral
+      await interaction.deferReply({ ephemeral: true });
       const channel = interaction.channel;
       const author = interaction.member;
-      const targetUser = interaction.options.getUser("userid");
+      const targetUser = options.getUser("userid");
       const targetMember = await interaction.guild.members.fetch(targetUser.id);
 
       if (channel.name !== ENLIST_CHANNEL) {
@@ -86,8 +86,6 @@ client.on("interactionCreate", async interaction => {
         const role = interaction.guild.roles.cache.find(r => r.name.trim().toLowerCase() === roleName.trim().toLowerCase());
         if (role) {
           await targetMember.roles.add(role).catch(() => {});
-        } else {
-          console.warn(`⚠️ Role not found: "${roleName}"`);
         }
       }
 
@@ -95,7 +93,7 @@ client.on("interactionCreate", async interaction => {
       await interaction.editReply({ content: `✅ <@${targetUser.id}> has been added to the roster as ${START_RANK}.` });
 
       const generalChannel = interaction.guild.channels.cache.get(GENERAL_CHANNEL_ID);
-      if (generalChannel && generalChannel.isTextBased()) {
+      if (generalChannel?.isTextBased()) {
         generalChannel.send(`Welcome to the regiment <@${targetUser.id}>, you've been assigned as ${START_RANK}!`);
       }
     } catch (err) {
@@ -105,26 +103,23 @@ client.on("interactionCreate", async interaction => {
   }
 
   // === /adduser ===
-  if (interaction.commandName === "adduser") {
+  if (commandName === "adduser") {
     try {
-      const targetUser = interaction.options.getUser("userid");
+      const targetUser = options.getUser("userid");
       const targetMember = await interaction.guild.members.fetch(targetUser.id);
       const robloxName = targetMember.nickname || targetUser.username;
-
       const doc = new GoogleSpreadsheet(SHEET_ID);
       await doc.useServiceAccountAuth(creds);
       await doc.loadInfo();
       const sheet = doc.sheetsByTitle[SHEET_NAME];
       const rows = await sheet.getRows();
 
-      // Extract valid ranks from column L
       const rankSet = new Set();
       for (const row of rows) {
         const rank = row._rawData[11]; // Column L
         if (rank) rankSet.add(rank);
       }
 
-      // Find user's highest matching rank role
       const matchingRank = targetMember.roles.cache.find(r =>
         [...rankSet].some(validRank => validRank.trim().toLowerCase() === r.name.trim().toLowerCase())
       );
@@ -160,7 +155,7 @@ client.on("interactionCreate", async interaction => {
   }
 
   // === /getservermembers ===
-  if (interaction.commandName === "getservermembers") {
+  if (commandName === "getservermembers") {
     const HIGHCOMMAND_ROLE = "highcode";
     if (!interaction.member.roles.cache.some(r => r.name === HIGHCOMMAND_ROLE)) {
       return interaction.reply({ content: "❌ You must be in HighCode to use this command.", ephemeral: true });
@@ -233,9 +228,8 @@ client.on("interactionCreate", async interaction => {
       await interaction.editReply({ content: "⚠️ Something went wrong while importing members." });
     }
   }
-  
   // === /runpromotions ===
-  if (interaction.commandName === "runpromotions") {
+  if (commandName === "runpromotions") {
     const HIGHCOMMAND_ROLE = "highcode";
 
     if (!interaction.member.roles.cache.some(r => r.name === HIGHCOMMAND_ROLE)) {
@@ -258,9 +252,9 @@ client.on("interactionCreate", async interaction => {
       const rankMap = [];
 
       for (const row of rows) {
-        const rank = row._rawData[11]; // Column L: Rank name
-        const points = row._rawData[12]; // Column M: Points required
-        if (rank && points && !isNaN(Number(points)) || points === "N/A") {
+        const rank = row._rawData[11]; // Column L
+        const points = row._rawData[12]; // Column M
+        if (rank && (points || points === "N/A")) {
           rankMap.push({ rank, points });
         }
       }
@@ -292,29 +286,19 @@ client.on("interactionCreate", async interaction => {
           manualPromotion ||
           (!isNaN(numericRequirement) && currentPoints >= numericRequirement);
 
-        // Always update next rank info (even if not promoted)
         row.NextRank = nextRank;
         row.NextRankPoints = isNaN(numericRequirement) ? 0 : numericRequirement;
 
-        // If eligible, promote
         if (eligible) {
-          promotions.push({
-            userId,
-            oldRank,
-            newRank: nextRank,
-          });
-
+          promotions.push({ userId, oldRank, newRank: nextRank });
           row.OldRank = row.NewRank;
           row.NewRank = nextRank;
-          row.PointsDiff = isNaN(numericRequirement)
-            ? 0
-            : numericRequirement - currentPoints;
-          row.ManualPromotion = ""; // Reset manual flag
+          row.PointsDiff = isNaN(numericRequirement) ? 0 : numericRequirement - currentPoints;
+          row.ManualPromotion = "";
         }
 
-        // Save the row regardless
         await row.save();
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Throttle writes to avoid rate limit
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       const logChannel = interaction.guild.channels.cache.get(BOTLOGS_CHANNEL_ID);
@@ -322,7 +306,6 @@ client.on("interactionCreate", async interaction => {
       const timestamp = new Date().toLocaleString();
 
       if (promotions.length > 0) {
-        // Apply Discord role changes
         for (const { userId, oldRank, newRank } of promotions) {
           const member = await interaction.guild.members.fetch(userId).catch(() => null);
           if (!member) continue;
@@ -342,7 +325,6 @@ client.on("interactionCreate", async interaction => {
           }
         }
 
-        // Announce promotions
         const lines = promotions.map(
           p => `<:horsie:1367555119377551510> ${p.oldRank} → ${p.newRank}  [] <@${p.userId}>`
         ).join("\n");
@@ -353,7 +335,6 @@ client.on("interactionCreate", async interaction => {
           await announceChannel.send(announcement);
         }
 
-        // Log summary
         if (logChannel?.isTextBased()) {
           const logMsg = `📅 Promotions run on ${timestamp}:\n` +
             promotions.map(p => `<@${p.userId}>: ${p.oldRank} → ${p.newRank}`).join("\n");
@@ -371,176 +352,6 @@ client.on("interactionCreate", async interaction => {
       console.error("❌ Error in /runpromotions:", err);
       await interaction.editReply({ content: "⚠️ Failed to process promotions." });
     }
-  }
-  
-// 1. Setup
-const { Client, GatewayIntentBits } = require("discord.js");
-const { GoogleSpreadsheet } = require("google-spreadsheet");
-const creds = JSON.parse(
-  Buffer.from(process.env.GOOGLE_CREDS, "base64").toString("utf8")
-);
-
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
-});
-
-// 2. Ready
-client.once("ready", () => {
-  console.log(`✅ Bot is ready! Logged in as ${client.user.tag}`);
-});
-
-// 3. Slash Command Handler
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const commandName = interaction.commandName;
-  const options = interaction.options;
-
-  const SHEET_ID = "1Qp8GrvR4hfCsJRnPHMDQUn2ckPLaWBuqZtzgf5UvSm4";
-  const SHEET_NAME = "Roster";
-  const GENERAL_CHANNEL_ID = "1363580534290382982";
-  const ANNOUNCEMENT_CHANNEL_ID = "1365233230663385151";
-  const BOTLOGS_CHANNEL_ID = "1374447452362510336";
-
-  // === /enlist ===
-  if (commandName === "enlist") {
-    // 🛡 Roles and channels
-    const ADMIN_ROLE = "Admin";
-    const VERIFIED_ROLE = "Verified";
-    const ENLIST_CHANNEL = "enlistment";
-    const START_RANK = "Rekrut";
-    const NEXT_RANK = "Gemeiner Reiter";
-    const NEXT_RANK_POINTS = 20;
-
-    try {
-      await interaction.deferReply({ flags: 1 << 6 }); // Defer with ephemeral
-      const channel = interaction.channel;
-      const author = interaction.member;
-      const targetUser = options.getUser("userid");
-      const targetMember = await interaction.guild.members.fetch(targetUser.id);
-
-      if (channel.name !== ENLIST_CHANNEL) {
-        return interaction.reply({ content: "❌ Use this command in #enlistment only.", ephemeral: true });
-      }
-
-      if (!author.roles.cache.some(r => r.name === ADMIN_ROLE)) {
-        return interaction.reply({ content: "❌ Only admins can use this command.", ephemeral: true });
-      }
-
-      if (!targetMember.roles.cache.some(r => r.name === VERIFIED_ROLE)) {
-        return interaction.reply({ content: "❌ That user isn't verified.", ephemeral: true });
-      }
-
-      const robloxName = targetMember.nickname || targetUser.username;
-
-      const doc = new GoogleSpreadsheet(SHEET_ID);
-      await doc.useServiceAccountAuth(creds);
-      await doc.loadInfo();
-      const sheet = doc.sheetsByTitle[SHEET_NAME];
-
-      await sheet.addRow({
-        RobloxUsername: robloxName,
-        DiscordUserID: targetUser.id,
-        OldRank: START_RANK,
-        NewRank: NEXT_RANK,
-        CurrentPoints: 0,
-        NextRankPoints: NEXT_RANK_POINTS,
-        PointsDiff: NEXT_RANK_POINTS,
-        Kills: 0,
-        Deaths: 0,
-        Battles: 0
-      });
-
-      const extraRoles = [
-        START_RANK,
-        "4. Geschwader",
-        "Regiment Königin-Dragoner",
-        "ㅤㅤㅤㅤㅤGeschwaderㅤㅤㅤㅤㅤ"
-      ];
-
-      for (const roleName of extraRoles) {
-        const role = interaction.guild.roles.cache.find(r => r.name.trim().toLowerCase() === roleName.trim().toLowerCase());
-        if (role) {
-          await targetMember.roles.add(role).catch(() => {});
-        } else {
-          console.warn(`⚠️ Role not found: "${roleName}"`);
-        }
-      }
-
-      await targetMember.setNickname(robloxName).catch(() => {});
-      await interaction.editReply({ content: `✅ <@${targetUser.id}> has been added to the roster as ${START_RANK}.` });
-
-      const generalChannel = interaction.guild.channels.cache.get(GENERAL_CHANNEL_ID);
-      if (generalChannel?.isTextBased()) {
-        generalChannel.send(`Welcome to the regiment <@${targetUser.id}>, you've been assigned as ${START_RANK}!`);
-      }
-    } catch (err) {
-      console.error("❌ Error handling /enlist:", err);
-      interaction.reply({ content: "⚠️ Something went wrong while enlisting this user.", ephemeral: true });
-    }
-  }
-
-  // === /adduser ===
-  if (commandName === "adduser") {
-    try {
-      const targetUser = options.getUser("userid");
-      const targetMember = await interaction.guild.members.fetch(targetUser.id);
-      const robloxName = targetMember.nickname || targetUser.username;
-
-      const doc = new GoogleSpreadsheet(SHEET_ID);
-      await doc.useServiceAccountAuth(creds);
-      await doc.loadInfo();
-      const sheet = doc.sheetsByTitle[SHEET_NAME];
-      const rows = await sheet.getRows();
-
-      const rankSet = new Set();
-      for (const row of rows) {
-        const rank = row._rawData[11]; // Column L
-        if (rank) rankSet.add(rank);
-      }
-
-      const matchingRank = targetMember.roles.cache.find(r =>
-        [...rankSet].some(validRank => validRank.trim().toLowerCase() === r.name.trim().toLowerCase())
-      );
-
-      const selectedRank = matchingRank ? matchingRank.name : "Rekrut";
-
-      const existingRow = rows.find(row => row.DiscordUserID === targetUser.id);
-
-      if (existingRow) {
-        existingRow.RobloxUsername = robloxName;
-        existingRow.OldRank = selectedRank;
-        await existingRow.save();
-        await interaction.reply({ content: `🔄 Updated <@${targetUser.id}> in the sheet.`, ephemeral: true });
-      } else {
-        await sheet.addRow({
-          RobloxUsername: robloxName,
-          DiscordUserID: targetUser.id,
-          OldRank: selectedRank,
-          NewRank: selectedRank,
-          CurrentPoints: 0,
-          NextRankPoints: 0,
-          PointsDiff: 0,
-          Kills: 0,
-          Deaths: 0,
-          Battles: 0
-        });
-        await interaction.reply({ content: `✅ Added <@${targetUser.id}> to the sheet as ${selectedRank}.`, ephemeral: true });
-      }
-    } catch (err) {
-      console.error("❌ Error handling /adduser:", err);
-      await interaction.reply({ content: "⚠️ Failed to add or update user.", ephemeral: true });
-    }
-  }
-
-  // === /getservermembers ===
-  if (commandName === "getservermembers") {
-    // (Keep your original getservermembers logic here)
-  }
-
-  // === /runpromotions ===
-  if (commandName === "runpromotions") {
-    // (Keep your original runpromotions logic here)
   }
 
   // === /stats USERID ===
