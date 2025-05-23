@@ -1,7 +1,10 @@
 // 1. Setup
 const { Client, GatewayIntentBits } = require("discord.js");
 const { GoogleSpreadsheet } = require("google-spreadsheet");
-const creds = require("./credentials.json");
+const creds = JSON.parse(
+  Buffer.from(process.env.GOOGLE_CREDS, "base64").toString("utf8")
+);
+
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
