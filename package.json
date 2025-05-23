@@ -2,9 +2,9 @@
   "name": "discord-regiment-bot",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
+"scripts": {
+  "start": "node deploy-commands.js"
+},
   "dependencies": {
     "discord.js": "^14.0.0",
     "google-spreadsheet": "^3.3.0"
