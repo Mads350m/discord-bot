@@ -378,7 +378,7 @@ client.on("interactionCreate", async interaction => {
       const kills = row.Kills ?? 0;
       const deaths = row.Deaths ?? 0;
 
-      const promoMsg = `${targetUser} is currently a ${rank} and ${pointsDiff} from a promotion!`;
+      const promoMsg = `${targetUser} is currently a ${rank} and ${pointsDiff} points from a promotion!`;
       const statsMsg = `${targetUser} currently has ${kills} kills and ${deaths} deaths.`;
 
       await interaction.reply(`${promoMsg}\n${statsMsg}`);
