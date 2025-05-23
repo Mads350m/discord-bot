@@ -371,41 +371,49 @@ client.on("interactionCreate", async interaction => {
     }
   }
 // === /stats USERID ===
-if (commandName === "stats") {
-  // 🔹 1. Get the target user from the command option
-  const targetUser = options.getUser("userid");
+client.on("interactionCreate", async interaction => {
+  if (!interaction.isChatInputCommand()) return;
 
-  // 🔹 2. Load rows from the Google Sheet
-  await sheet.loadCells(); // if needed
-  const rows = await sheet.getRows();
+  const commandName = interaction.commandName;
+  const options = interaction.options;
 
-  // 🔹 3. Try to find the row for this Discord user
-  const row = rows.find(r => r.DiscordUserID === targetUser.id);
+  if (commandName === "stats") {
+    try {
+      const targetUser = options.getUser("userid");
 
-  // 🔹 4. If not found, reply with error
-  if (!row) {
-    return interaction.reply({
-      content: `❌ ${targetUser} is not in the roster.`,
-      ephemeral: true
-    });
+      // 🔄 Load sheet rows
+      await sheet.loadCells?.(); // optional depending on how your API is used
+      const rows = await sheet.getRows();
+
+      // 🔎 Find matching row using DiscordUserID
+      const row = rows.find(r => r.DiscordUserID === targetUser.id);
+      if (!row) {
+        return interaction.reply({
+          content: `❌ ${targetUser} is not in the roster.`,
+          ephemeral: true
+        });
+      }
+
+      // 🧾 Extract fields from sheet
+      const rank = row.OldRank || "Unknown";
+      const pointsDiff = row.PointsDiff ?? "N/A";
+      const kills = row.Kills ?? 0;
+      const deaths = row.Deaths ?? 0;
+
+      // 📤 Compose reply
+      const promoMsg = `${targetUser} is currently a ${rank} and ${pointsDiff} from a promotion!`;
+      const statsMsg = `${targetUser} currently has ${kills} kills and ${deaths} deaths.`;
+
+      await interaction.reply(`${promoMsg}\n${statsMsg}`);
+    } catch (err) {
+      console.error("❌ Error handling /stats command:", err);
+      return interaction.reply({
+        content: "Something went wrong while retrieving stats.",
+        ephemeral: true
+      });
+    }
   }
-
-  // 🔹 5. Extract stats from the row
-  const rank = row.OldRank || "Unknown";
-  const pointsDiff = row.PointsDiff ?? "N/A";
-  const kills = row.Kills ?? 0;
-  const deaths = row.Deaths ?? 0;
-
-  // 🔹 6. Build the response
-  const promoMsg = `${targetUser} is currently a ${rank} and ${pointsDiff} from a promotion!`;
-  const statsMsg = `${targetUser} currently has ${kills} kills and ${deaths} deaths.`;
-
-  // 🔹 7. Reply to the user
-  return interaction.reply({
-    content: `${promoMsg}\n${statsMsg}`
-  });
-}
-
+  
 });
 // 4. Login
 client.login(process.env.DISCORD_TOKEN);
