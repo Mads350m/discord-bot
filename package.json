@@ -5,8 +5,9 @@
 "scripts": {
   "start": "node index.js"
 },
-  "dependencies": {
-    "discord.js": "^14.0.0",
-    "google-spreadsheet": "^3.3.0"
+"dependencies": {
+  "discord.js": "^14.0.0",
+  "google-spreadsheet": "^3.3.0",
+  "noblox.js": "^4.14.0"
   }
 }
