@@ -354,6 +354,114 @@ client.on("interactionCreate", async interaction => {
     }
   }
 
+// === /audit ===
+if (commandName === "audit") {
+  try {
+    const input = options.getString("data");
+    const PERFORMANCE_CHANNEL_ID = "1375629618039619584";
+
+    // 1. Parse and accumulate stats per user
+    const lines = input.trim().split("\n");
+    const userStats = {};
+
+    for (const line of lines) {
+      const [name, killsStr, deathsStr, assistsStr] = line.split(",");
+      const kills = parseInt(killsStr);
+      const deaths = parseInt(deathsStr);
+      const assists = parseInt(assistsStr);
+      const key = name.trim();
+
+      if (!userStats[key]) {
+        userStats[key] = { kills: 0, deaths: 0, assists: 0, entries: 0 };
+      }
+
+      userStats[key].kills += kills;
+      userStats[key].deaths += deaths;
+      userStats[key].assists += assists;
+      userStats[key].entries += 1;
+    }
+
+    // 2. Determine topfrag
+    let topfrag = null;
+    let maxKills = -1;
+    for (const [name, stats] of Object.entries(userStats)) {
+      if (stats.kills > maxKills) {
+        maxKills = stats.kills;
+        topfrag = name;
+      }
+    }
+
+    // 3. Load sheet
+    const doc = new GoogleSpreadsheet(SHEET_ID);
+    await doc.useServiceAccountAuth(creds);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByTitle[SHEET_NAME];
+    const rows = await sheet.getRows();
+
+    let replySummary = [];
+    let announceSummary = [];
+
+    for (const [robloxName, stats] of Object.entries(userStats)) {
+      const row = rows.find(r => r.RobloxUsername?.toLowerCase() === robloxName.toLowerCase());
+
+      if (!row) {
+        replySummary.push(`⚠️ ${robloxName}: not found in sheet.`);
+        continue;
+      }
+
+      const existingKills = Number(row.Kills) || 0;
+      const existingDeaths = Number(row.Deaths) || 0;
+      const existingAssists = Number(row.Assists) || 0;
+      const existingPoints = Number(row.CurrentPoints) || 0;
+
+      // 4. Calculate points
+      let bonusPoints = 10 * stats.entries; // Attendance
+      if (stats.kills >= 20) bonusPoints += 1;
+      if (stats.assists >= 20) bonusPoints += 1;
+      if (robloxName === topfrag) bonusPoints += 5;
+
+      // 5. Update sheet
+      row.Kills = existingKills + stats.kills;
+      row.Deaths = existingDeaths + stats.deaths;
+      row.Assists = existingAssists + stats.assists;
+      row.CurrentPoints = existingPoints + bonusPoints;
+
+      const nextRankPoints = Number(row.NextRankPoints) || 0;
+      row.PointsDiff = Math.max(0, nextRankPoints - row.CurrentPoints);
+
+      await row.save();
+
+      // Add to both summaries
+      const statLine = `✅ ${robloxName}: +${bonusPoints} points (${stats.kills}K/${stats.deaths}D/${stats.assists}A)`;
+      replySummary.push(statLine);
+      announceSummary.push(statLine);
+    }
+
+    // 6. Send reply to user
+    await interaction.reply({
+      content: replySummary.join("\n").slice(0, 2000)
+    });
+
+    // 7. Send announcement to channel
+    const announceChannel = interaction.guild.channels.cache.get(PERFORMANCE_CHANNEL_ID);
+    if (announceChannel?.isTextBased()) {
+      const announcement =
+        `Todays battles performance:\n\n` +
+        announceSummary.join("\n") +
+        `\n\n🏆 Topfragger: ${topfrag} with ${maxKills} kills\n\nGood job everyone!`;
+
+      await announceChannel.send(announcement);
+    }
+
+  } catch (err) {
+    console.error("❌ Error in /audit:", err);
+    await interaction.reply({
+      content: "⚠️ Something went wrong during audit processing.",
+      ephemeral: true
+    });
+  }
+}
+
   // === /stats USERID ===
   if (commandName === "stats") {
     try {
