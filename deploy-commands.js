@@ -40,6 +40,18 @@ const commands = [
       }
     ]
   },
+{
+  name: "audit",
+  description: "Parse battle logs and apply performance points",
+  options: [
+    {
+      name: "data",
+      description: "Paste battle logs in CSV format: RobloxName,Kills,Deaths,Assists (one per line)",
+      type: 3,
+      required: true
+    }
+  ]
+},
   {
     name: "stats",
     description: "Check the stats of a user",
