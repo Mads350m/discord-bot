@@ -5,6 +5,18 @@ const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS, "base64").toString("utf8")
 );
 
+const noblox = require("noblox.js");
+
+// 🔐 Login to Roblox using .ROBLOSECURITY from env
+(async () => {
+  try {
+    await noblox.setCookie(process.env.ROBLOX_COOKIE);
+    console.log("✅ Logged into Roblox with noblox.js");
+  } catch (err) {
+    console.error("❌ Failed to log in to Roblox:", err.message);
+  }
+})();
+
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
@@ -323,6 +335,20 @@ client.on("interactionCreate", async interaction => {
           } catch (e) {
             console.warn(`Role update failed for ${userId}:`, e.message);
           }
+  // 🟦 Roblox rank sync
+  try {
+    const row = rows.find(r => r.DiscordUserID === userId);
+    const robloxName = row?.RobloxUsername;
+    if (robloxName) {
+      const robloxId = await noblox.getIdFromUsername(robloxName);
+      const rankId = rankMap.findIndex(r => r.rank === newRank) + 1; // Assuming rank ID = sheet order
+      await noblox.setRank(6909357, robloxId, rankId);
+      console.log(`🔁 Synced ${robloxName} to rank ID ${rankId} in Roblox`);
+    }
+  } catch (e) {
+    console.warn(`⚠️ Failed to rank Roblox user: ${e.message}`);
+  }
+
         }
 
         const lines = promotions.map(
