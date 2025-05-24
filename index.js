@@ -357,6 +357,7 @@ client.on("interactionCreate", async interaction => {
 // === /audit ===
 if (commandName === "audit") {
   try {
+    await interaction.deferReply({ ephemeral: true }); // 👈 added
     const input = options.getString("data");
     const PERFORMANCE_CHANNEL_ID = "1375629618039619584";
 
@@ -438,9 +439,9 @@ if (commandName === "audit") {
     }
 
     // 6. Send reply to user
-    await interaction.reply({
-      content: replySummary.join("\n").slice(0, 2000)
-    });
+await interaction.editReply({
+  content: replySummary.join("\n").slice(0, 2000)
+});
 
     // 7. Send announcement to channel
     const announceChannel = interaction.guild.channels.cache.get(PERFORMANCE_CHANNEL_ID);
