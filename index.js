@@ -9,16 +9,19 @@ const noblox = require("noblox.js");
 
 async function startBot() {
   try {
+    console.log("🔐 Attempting to log in to Roblox...");
+    console.log("Cookie starts with:", process.env.ROBLOX_COOKIE.slice(0, 80)); // Should begin with _|WARNING
+
     await noblox.setCookie(process.env.ROBLOX_COOKIE);
     const currentUser = await noblox.getCurrentUser();
     console.log(`✅ Logged into Roblox as ${currentUser.UserName} [${currentUser.UserID}]`);
 
-    // ✅ Start the Discord bot only after Roblox login works
     client.login(process.env.DISCORD_TOKEN);
   } catch (err) {
     console.error("❌ Failed to login to Roblox:", err.message);
   }
 }
+
 
 startBot();
 
