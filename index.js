@@ -488,7 +488,87 @@ await interaction.editReply({
     });
   }
 }
+// === /update ===
+if (commandName === "update") {
+  try {
+    const targetUser = options.getUser("userid");
+    const targetMember = await interaction.guild.members.fetch(targetUser.id);
+    const robloxName = targetMember.nickname || targetUser.username;
 
+    // 🧾 Load sheet + ranks
+    const doc = new GoogleSpreadsheet(SHEET_ID);
+    await doc.useServiceAccountAuth(creds);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByTitle[SHEET_NAME];
+    const rows = await sheet.getRows();
+
+    // 🔎 Get full rank structure
+    const rankMap = [];
+    for (const row of rows) {
+      const rank = row._rawData[11]; // Column L
+      const points = row._rawData[12]; // Column M
+      if (rank) rankMap.push({ rank, points });
+    }
+
+    // 🧩 Find matching Discord role
+    const matchingRole = targetMember.roles.cache.find(role =>
+      rankMap.some(r => r.rank.trim().toLowerCase() === role.name.trim().toLowerCase())
+    );
+
+    if (!matchingRole) {
+      return interaction.reply({
+        content: "❌ This user has no rank role that matches the rank list.",
+        ephemeral: true
+      });
+    }
+
+    const currentRank = matchingRole.name;
+    const currentIndex = rankMap.findIndex(r => r.rank === currentRank);
+    const nextRank = rankMap[currentIndex + 1]?.rank || currentRank;
+    const nextPoints = rankMap[currentIndex + 1]?.points || 0;
+
+    // 🔄 Find or create sheet row
+    const row = rows.find(r => r.DiscordUserID === targetUser.id);
+    if (!row) {
+      return interaction.reply({
+        content: `⚠️ <@${targetUser.id}> is not listed in the sheet.`,
+        ephemeral: true
+      });
+    }
+
+    row.RobloxUsername = robloxName;
+    row.OldRank = currentRank;
+    row.NewRank = nextRank;
+    row.NextRankPoints = isNaN(nextPoints) ? 0 : Number(nextPoints);
+
+    const currentPoints = Number(row.CurrentPoints) || 0;
+    row.PointsDiff = Math.max(0, row.NextRankPoints - currentPoints);
+
+    await row.save();
+
+    // 🟦 Sync Roblox group rank
+    try {
+      const robloxId = await noblox.getIdFromUsername(robloxName);
+      const rankId = currentIndex + 1;
+      await noblox.setRank(6909357, robloxId, rankId);
+      console.log(`🔁 Synced ${robloxName} to rank ID ${rankId} in Roblox`);
+    } catch (e) {
+      console.warn(`⚠️ Failed to update Roblox rank for ${robloxName}: ${e.message}`);
+    }
+
+    // ✅ Confirm update
+    await interaction.reply({
+      content: `✅ <@${targetUser.id}> has been updated to **${currentRank}** in the sheet and Roblox.`,
+      ephemeral: true
+    });
+  } catch (err) {
+    console.error("❌ Error in /update:", err);
+    await interaction.reply({
+      content: "⚠️ Something went wrong while updating this user.",
+      ephemeral: true
+    });
+  }
+}
   // === /stats USERID ===
   if (commandName === "stats") {
     try {
