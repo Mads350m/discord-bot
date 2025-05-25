@@ -20,6 +20,18 @@ const commands = [
       }
     ]
   },
+{
+  name: "update",
+  description: "Update a user’s rank to match their current Discord role",
+  options: [
+    {
+      name: "userid",
+      description: "The user to update",
+      type: 6, // USER
+      required: true
+    }
+  ]
+},
   {
     name: "getservermembers",
     description: "Import all current Discord users to the Sheets roster"
