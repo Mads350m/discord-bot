@@ -7,15 +7,21 @@ const creds = JSON.parse(
 
 const noblox = require("noblox.js");
 
-// 🔐 Login to Roblox using .ROBLOSECURITY from env
-(async () => {
+async function startBot() {
   try {
     await noblox.setCookie(process.env.ROBLOX_COOKIE);
-    console.log("✅ Logged into Roblox with noblox.js");
+    const currentUser = await noblox.getCurrentUser();
+    console.log(`✅ Logged into Roblox as ${currentUser.UserName} [${currentUser.UserID}]`);
+
+    // ✅ Start the Discord bot only after Roblox login works
+    client.login(process.env.DISCORD_TOKEN);
   } catch (err) {
-    console.error("❌ Failed to log in to Roblox:", err.message);
+    console.error("❌ Failed to login to Roblox:", err.message);
   }
-})();
+}
+
+startBot();
+
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
@@ -608,7 +614,7 @@ if (commandName === "update") {
 });
 
 // 4. Login
-client.login(process.env.DISCORD_TOKEN);
+//client.login(process.env.DISCORD_TOKEN);
 
 // 5. Background error logging
 process.on("unhandledRejection", err => {
