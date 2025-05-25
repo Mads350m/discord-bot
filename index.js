@@ -5,27 +5,6 @@ const creds = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDS, "base64").toString("utf8")
 );
 
-const noblox = require("noblox.js");
-
-async function startBot() {
-  try {
-    console.log("🔐 Attempting to log in to Roblox...");
-    console.log("Cookie starts with:", process.env.ROBLOX_COOKIE.slice(0, 80)); // Should begin with _|WARNING
-
-    await noblox.setCookie(process.env.ROBLOX_COOKIE);
-    const currentUser = await noblox.getCurrentUser();
-    console.log(`✅ Logged into Roblox as ${currentUser.UserName} [${currentUser.UserID}]`);
-
-    client.login(process.env.DISCORD_TOKEN);
-  } catch (err) {
-    console.error("❌ Failed to login to Roblox:", err.message);
-  }
-}
-
-
-startBot();
-
-
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
@@ -249,6 +228,7 @@ client.on("interactionCreate", async interaction => {
       await interaction.editReply({ content: "⚠️ Something went wrong while importing members." });
     }
   }
+
   // === /runpromotions ===
   if (commandName === "runpromotions") {
     const HIGHCOMMAND_ROLE = "highcode";
@@ -273,8 +253,8 @@ client.on("interactionCreate", async interaction => {
       const rankMap = [];
 
       for (const row of rows) {
-        const rank = row._rawData[11]; // Column L
-        const points = row._rawData[12]; // Column M
+        const rank = row._rawData[11];
+        const points = row._rawData[12];
         if (rank && (points || points === "N/A")) {
           rankMap.push({ rank, points });
         }
@@ -344,20 +324,6 @@ client.on("interactionCreate", async interaction => {
           } catch (e) {
             console.warn(`Role update failed for ${userId}:`, e.message);
           }
-  // 🟦 Roblox rank sync
-  try {
-    const row = rows.find(r => r.DiscordUserID === userId);
-    const robloxName = row?.RobloxUsername;
-    if (robloxName) {
-      const robloxId = await noblox.getIdFromUsername(robloxName);
-      const rankId = rankMap.findIndex(r => r.rank === newRank) + 1; // Assuming rank ID = sheet order
-      await noblox.setRank(6909357, robloxId, rankId);
-      console.log(`🔁 Synced ${robloxName} to rank ID ${rankId} in Roblox`);
-    }
-  } catch (e) {
-    console.warn(`⚠️ Failed to rank Roblox user: ${e.message}`);
-  }
-
         }
 
         const lines = promotions.map(
@@ -376,7 +342,7 @@ client.on("interactionCreate", async interaction => {
           await logChannel.send(logMsg);
         }
 
-        await interaction.editReply({ content: `✅ ${promotions.length} users promoted.` });
+        await interaction.editReply({ content: `✅ ${promotions.length} users promoted.\n⚠️ Remember to update promoted users manually in the Roblox group.` });
       } else {
         await interaction.editReply({ content: `ℹ️ No eligible users for promotion.` });
         if (logChannel?.isTextBased()) {
@@ -497,87 +463,72 @@ await interaction.editReply({
     });
   }
 }
-// === /update ===
-if (commandName === "update") {
-  try {
-    const targetUser = options.getUser("userid");
-    const targetMember = await interaction.guild.members.fetch(targetUser.id);
-    const robloxName = targetMember.nickname || targetUser.username;
-
-    // 🧾 Load sheet + ranks
-    const doc = new GoogleSpreadsheet(SHEET_ID);
-    await doc.useServiceAccountAuth(creds);
-    await doc.loadInfo();
-    const sheet = doc.sheetsByTitle[SHEET_NAME];
-    const rows = await sheet.getRows();
-
-    // 🔎 Get full rank structure
-    const rankMap = [];
-    for (const row of rows) {
-      const rank = row._rawData[11]; // Column L
-      const points = row._rawData[12]; // Column M
-      if (rank) rankMap.push({ rank, points });
-    }
-
-    // 🧩 Find matching Discord role
-    const matchingRole = targetMember.roles.cache.find(role =>
-      rankMap.some(r => r.rank.trim().toLowerCase() === role.name.trim().toLowerCase())
-    );
-
-    if (!matchingRole) {
-      return interaction.reply({
-        content: "❌ This user has no rank role that matches the rank list.",
-        ephemeral: true
-      });
-    }
-
-    const currentRank = matchingRole.name;
-    const currentIndex = rankMap.findIndex(r => r.rank === currentRank);
-    const nextRank = rankMap[currentIndex + 1]?.rank || currentRank;
-    const nextPoints = rankMap[currentIndex + 1]?.points || 0;
-
-    // 🔄 Find or create sheet row
-    const row = rows.find(r => r.DiscordUserID === targetUser.id);
-    if (!row) {
-      return interaction.reply({
-        content: `⚠️ <@${targetUser.id}> is not listed in the sheet.`,
-        ephemeral: true
-      });
-    }
-
-    row.RobloxUsername = robloxName;
-    row.OldRank = currentRank;
-    row.NewRank = nextRank;
-    row.NextRankPoints = isNaN(nextPoints) ? 0 : Number(nextPoints);
-
-    const currentPoints = Number(row.CurrentPoints) || 0;
-    row.PointsDiff = Math.max(0, row.NextRankPoints - currentPoints);
-
-    await row.save();
-
-    // 🟦 Sync Roblox group rank
+  // === /update ===
+  if (commandName === "update") {
     try {
-      const robloxId = await noblox.getIdFromUsername(robloxName);
-      const rankId = currentIndex + 1;
-      await noblox.setRank(6909357, robloxId, rankId);
-      console.log(`🔁 Synced ${robloxName} to rank ID ${rankId} in Roblox`);
-    } catch (e) {
-      console.warn(`⚠️ Failed to update Roblox rank for ${robloxName}: ${e.message}`);
-    }
+      const targetUser = options.getUser("userid");
+      const targetMember = await interaction.guild.members.fetch(targetUser.id);
+      const robloxName = targetMember.nickname || targetUser.username;
 
-    // ✅ Confirm update
-    await interaction.reply({
-      content: `✅ <@${targetUser.id}> has been updated to **${currentRank}** in the sheet and Roblox.`,
-      ephemeral: true
-    });
-  } catch (err) {
-    console.error("❌ Error in /update:", err);
-    await interaction.reply({
-      content: "⚠️ Something went wrong while updating this user.",
-      ephemeral: true
-    });
+      const doc = new GoogleSpreadsheet(SHEET_ID);
+      await doc.useServiceAccountAuth(creds);
+      await doc.loadInfo();
+      const sheet = doc.sheetsByTitle[SHEET_NAME];
+      const rows = await sheet.getRows();
+
+      const rankMap = [];
+      for (const row of rows) {
+        const rank = row._rawData[11];
+        const points = row._rawData[12];
+        if (rank) rankMap.push({ rank, points });
+      }
+
+      const matchingRole = targetMember.roles.cache.find(role =>
+        rankMap.some(r => r.rank.trim().toLowerCase() === role.name.trim().toLowerCase())
+      );
+
+      if (!matchingRole) {
+        return interaction.reply({
+          content: "❌ This user has no rank role that matches the rank list.",
+          ephemeral: true
+        });
+      }
+
+      const currentRank = matchingRole.name;
+      const currentIndex = rankMap.findIndex(r => r.rank === currentRank);
+      const nextRank = rankMap[currentIndex + 1]?.rank || currentRank;
+      const nextPoints = rankMap[currentIndex + 1]?.points || 0;
+
+      const row = rows.find(r => r.DiscordUserID === targetUser.id);
+      if (!row) {
+        return interaction.reply({
+          content: `⚠️ <@${targetUser.id}> is not listed in the sheet.`,
+          ephemeral: true
+        });
+      }
+
+      row.RobloxUsername = robloxName;
+      row.OldRank = currentRank;
+      row.NewRank = nextRank;
+      row.NextRankPoints = isNaN(nextPoints) ? 0 : Number(nextPoints);
+
+      const currentPoints = Number(row.CurrentPoints) || 0;
+      row.PointsDiff = Math.max(0, row.NextRankPoints - currentPoints);
+
+      await row.save();
+
+      await interaction.reply({
+        content: `✅ <@${targetUser.id}> has been updated to **${currentRank}** in the sheet.\n⚠️ Remember to update this user's rank manually in the Roblox group.`,
+        ephemeral: true
+      });
+    } catch (err) {
+      console.error("❌ Error in /update:", err);
+      await interaction.reply({
+        content: "⚠️ Something went wrong while updating this user.",
+        ephemeral: true
+      });
+    }
   }
-}
   // === /stats USERID ===
   if (commandName === "stats") {
     try {
