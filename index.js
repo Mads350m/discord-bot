@@ -568,7 +568,7 @@ await interaction.editReply({
 });
 
 // 4. Login
-//client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.DISCORD_TOKEN);
 
 // 5. Background error logging
 process.on("unhandledRejection", err => {
