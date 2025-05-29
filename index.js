@@ -371,7 +371,9 @@ if (commandName === "audit") {
       const kills = parseInt(killsStr);
       const deaths = parseInt(deathsStr);
       const assists = parseInt(assistsStr);
-      const key = name.trim();
+      const match = name.match(/\(@(.+?)\)$/); // extracts what's inside the final (@...)
+      const key = match ? match[1].trim() : name.trim(); // fallback to full if no match
+
 
       if (!userStats[key]) {
         userStats[key] = { kills: 0, deaths: 0, assists: 0, entries: 0 };
