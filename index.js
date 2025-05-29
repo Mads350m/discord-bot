@@ -363,7 +363,7 @@ if (commandName === "audit") {
     const PERFORMANCE_CHANNEL_ID = "1375629618039619584";
 
     // 1. Parse and accumulate stats per user
-    const lines = input.trim().split("\n");
+    const lines = input.trim().split("!");
     const userStats = {};
 
     for (const line of lines) {
