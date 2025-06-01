@@ -230,7 +230,7 @@ client.on("interactionCreate", async interaction => {
   }
 
   // === /runpromotions ===
-  if (commandName === "runpromotions") {
+  if (interaction.commandName === "runpromotions") {
     const HIGHCOMMAND_ROLE = "highcode";
 
     if (!interaction.member.roles.cache.some(r => r.name === HIGHCOMMAND_ROLE)) {
@@ -253,9 +253,9 @@ client.on("interactionCreate", async interaction => {
       const rankMap = [];
 
       for (const row of rows) {
-        const rank = row._rawData[11];
-        const points = row._rawData[12];
-        if (rank && (points || points === "N/A")) {
+        const rank = row._rawData[11]; // Column L: Rank name
+        const points = row._rawData[12]; // Column M: Points required
+        if (rank && points && !isNaN(Number(points)) || points === "N/A") {
           rankMap.push({ rank, points });
         }
       }
@@ -287,19 +287,29 @@ client.on("interactionCreate", async interaction => {
           manualPromotion ||
           (!isNaN(numericRequirement) && currentPoints >= numericRequirement);
 
+        // Always update next rank info (even if not promoted)
         row.NextRank = nextRank;
         row.NextRankPoints = isNaN(numericRequirement) ? 0 : numericRequirement;
 
+        // If eligible, promote
         if (eligible) {
-          promotions.push({ userId, oldRank, newRank: nextRank });
+          promotions.push({
+            userId,
+            oldRank,
+            newRank: nextRank,
+          });
+
           row.OldRank = row.NewRank;
           row.NewRank = nextRank;
-          row.PointsDiff = isNaN(numericRequirement) ? 0 : numericRequirement - currentPoints;
-          row.ManualPromotion = "";
+          row.PointsDiff = isNaN(numericRequirement)
+            ? 0
+            : numericRequirement - currentPoints;
+          row.ManualPromotion = ""; // Reset manual flag
         }
 
+        // Save the row regardless
         await row.save();
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Throttle writes to avoid rate limit
       }
 
       const logChannel = interaction.guild.channels.cache.get(BOTLOGS_CHANNEL_ID);
@@ -307,6 +317,7 @@ client.on("interactionCreate", async interaction => {
       const timestamp = new Date().toLocaleString();
 
       if (promotions.length > 0) {
+        // Apply Discord role changes
         for (const { userId, oldRank, newRank } of promotions) {
           const member = await interaction.guild.members.fetch(userId).catch(() => null);
           if (!member) continue;
@@ -326,6 +337,7 @@ client.on("interactionCreate", async interaction => {
           }
         }
 
+        // Announce promotions
         const lines = promotions.map(
           p => `<:horsie:1367555119377551510> ${p.oldRank} → ${p.newRank}  [] <@${p.userId}>`
         ).join("\n");
@@ -336,13 +348,14 @@ client.on("interactionCreate", async interaction => {
           await announceChannel.send(announcement);
         }
 
+        // Log summary
         if (logChannel?.isTextBased()) {
           const logMsg = `📅 Promotions run on ${timestamp}:\n` +
             promotions.map(p => `<@${p.userId}>: ${p.oldRank} → ${p.newRank}`).join("\n");
           await logChannel.send(logMsg);
         }
 
-        await interaction.editReply({ content: `✅ ${promotions.length} users promoted.\n⚠️ Remember to update promoted users manually in the Roblox group.` });
+        await interaction.editReply({ content: `✅ ${promotions.length} users promoted.` });
       } else {
         await interaction.editReply({ content: `ℹ️ No eligible users for promotion.` });
         if (logChannel?.isTextBased()) {
