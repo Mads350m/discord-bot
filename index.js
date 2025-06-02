@@ -79,7 +79,7 @@ client.on("interactionCreate", async interaction => {
         START_RANK,
         "Unassigned",
         "Regiment Königin-Dragoner",
-        "ㅤㅤㅤㅤㅤSquadronsㅤㅤㅤㅤㅤ"
+        "ㅤㅤㅤㅤㅤDesignationㅤㅤㅤㅤㅤ"
       ];
 
       for (const roleName of extraRoles) {
