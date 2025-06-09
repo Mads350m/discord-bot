@@ -37,9 +37,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
   console.log("🔥 Reaction detected!");
 
-  const guild = reaction.message.guild;
-
-  const guild = reaction.message.guild;
+  const guild = reaction.message.guild; // ✅ only once
   const member = await guild.members.fetch(user.id);
   const messageId = reaction.message.id;
   const emoji = reaction.emoji.name;
@@ -57,6 +55,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
     }
   }
 });
+
 
 client.on("messageReactionRemove", async (reaction, user) => {
   if (reaction.partial) await reaction.fetch();
