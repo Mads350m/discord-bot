@@ -23,8 +23,49 @@ client.once("ready", () => {
   console.log(`✅ Bot is ready! Logged in as ${client.user.tag}`);
 });
 
-client.on("messageReactionAdd", async (reaction, user) => { ... });
-client.on("messageReactionRemove", async (reaction, user) => { ... });
+client.on("messageReactionAdd", async (reaction, user) => {
+  if (reaction.partial) await reaction.fetch();
+  if (reaction.message.partial) await reaction.message.fetch();
+  if (user.bot) return;
+
+  const guild = reaction.message.guild;
+  const member = await guild.members.fetch(user.id);
+  const messageId = reaction.message.id;
+  const emoji = reaction.emoji.name;
+
+  const roleName = reactionRolesConfig[messageId]?.[emoji];
+  if (!roleName) return;
+
+  const roleToGive = guild.roles.cache.find(r => r.name === roleName);
+  const unassignedRole = guild.roles.cache.find(r => r.name === "Unassigned");
+
+  if (roleToGive && !member.roles.cache.has(roleToGive.id)) {
+    await member.roles.add(roleToGive).catch(console.error);
+    if (unassignedRole && member.roles.cache.has(unassignedRole.id)) {
+      await member.roles.remove(unassignedRole).catch(console.error);
+    }
+  }
+});
+
+client.on("messageReactionRemove", async (reaction, user) => {
+  if (reaction.partial) await reaction.fetch();
+  if (reaction.message.partial) await reaction.message.fetch();
+  if (user.bot) return;
+
+  const guild = reaction.message.guild;
+  const member = await guild.members.fetch(user.id);
+  const messageId = reaction.message.id;
+  const emoji = reaction.emoji.name;
+
+  const roleName = reactionRolesConfig[messageId]?.[emoji];
+  if (!roleName) return;
+
+  const roleToRemove = guild.roles.cache.find(r => r.name === roleName);
+  if (roleToRemove && member.roles.cache.has(roleToRemove.id)) {
+    await member.roles.remove(roleToRemove).catch(console.error);
+  }
+});
+
 
 // 3. Slash Command Handler
 client.on("interactionCreate", async interaction => {
@@ -113,50 +154,6 @@ client.on("interactionCreate", async interaction => {
       interaction.reply({ content: "⚠️ Something went wrong while enlisting this user.", ephemeral: true });
     }
   }
-
-  // === Reaction role ===
-  if (reaction.partial) await reaction.fetch();
-  if (reaction.message.partial) await reaction.message.fetch();
-  if (user.bot) return;
-
-  const guild = reaction.message.guild;
-  const member = await guild.members.fetch(user.id);
-  const messageId = reaction.message.id;
-  const emoji = reaction.emoji.name;
-
-  const roleName = reactionRolesConfig[messageId]?.[emoji];
-  if (!roleName) return;
-
-  const roleToGive = guild.roles.cache.find(r => r.name === roleName);
-  const unassignedRole = guild.roles.cache.find(r => r.name === "Unassigned");
-
-  if (roleToGive && !member.roles.cache.has(roleToGive.id)) {
-    await member.roles.add(roleToGive).catch(console.error);
-    if (unassignedRole && member.roles.cache.has(unassignedRole.id)) {
-      await member.roles.remove(unassignedRole).catch(console.error);
-    }
-  }
-});
-
-client.on("messageReactionRemove", async (reaction, user) => {
-  // Optional: removes the role when the user removes their reaction
-  if (reaction.partial) await reaction.fetch();
-  if (reaction.message.partial) await reaction.message.fetch();
-  if (user.bot) return;
-
-  const guild = reaction.message.guild;
-  const member = await guild.members.fetch(user.id);
-  const messageId = reaction.message.id;
-  const emoji = reaction.emoji.name;
-
-  const roleName = reactionRolesConfig[messageId]?.[emoji];
-  if (!roleName) return;
-
-  const roleToRemove = guild.roles.cache.find(r => r.name === roleName);
-  if (roleToRemove && member.roles.cache.has(roleToRemove.id)) {
-    await member.roles.remove(roleToRemove).catch(console.error);
-  }
-});
 
   // === /adduser ===
   if (commandName === "adduser") {
