@@ -80,10 +80,31 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
     console.log(`👤 ${user.tag} reacted with "${emoji}" on message ${messageId}`);
 
-    if (reactionRolesConfig[messageId]) {
-      console.log(`✅ Reaction detected on watched message ${messageId}`);
+    const roleName = reactionRolesConfig[messageId]?.[emoji];
+    if (!roleName) return console.log(`❌ Reaction on non-watched message: ${messageId}`);
+
+    const guild = reaction.message.guild;
+    const member = await guild.members.fetch(user.id);
+    const roleToGive = guild.roles.cache.find(r => r.name === roleName);
+    const unassignedRole = guild.roles.cache.find(r => r.name === "Unassigned");
+
+    console.log(`🔎 Trying to give role: ${roleName}`);
+    if (!roleToGive) {
+      return console.warn(`❌ Role "${roleName}" not found in guild.`);
+    }
+
+    if (!member.roles.cache.has(roleToGive.id)) {
+      console.log(`➕ Adding role ${roleToGive.name} to ${member.user.tag}`);
+      await member.roles.add(roleToGive).catch(err => console.error("❌ Failed to add role:", err));
     } else {
-      console.log(`❌ Reaction on non-watched message: ${messageId}`);
+      console.log(`ℹ️ Member already has the role ${roleToGive.name}`);
+    }
+
+    if (unassignedRole && member.roles.cache.has(unassignedRole.id)) {
+      console.log(`➖ Removing Unassigned role from ${member.user.tag}`);
+      await member.roles.remove(unassignedRole).catch(err => console.error("❌ Failed to remove Unassigned role:", err));
+    } else {
+      console.log(`ℹ️ No Unassigned role to remove or member doesn't have it`);
     }
   } catch (err) {
     console.error("❌ Error in messageReactionAdd:", err);
