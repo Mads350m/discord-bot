@@ -30,8 +30,8 @@ client.once("ready", async () => {
   console.log(`✅ Bot is ready! Logged in as ${client.user.tag}`);
 
   const channelsToWatch = [
-    { channelId: "1381632309935353896", messageId: "1381632311992258755" }, // Fuß
-    { channelId: "1381635538741903392", messageId: "1381635539169706044" }  // Pferd
+    { channelId: "1381061895926055082", messageId: "1381632311992258755" }, // Fuß
+    { channelId: "1381062048594792538", messageId: "1381635539169706044" }  // Pferd
   ];
 
   for (const { channelId, messageId } of channelsToWatch) {
