@@ -9,10 +9,22 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
+const reactionRolesConfig = {
+  "1381632311992258755": {
+    "✅": "Dragoner zu Fuß",
+  },
+  "1381635539169706044": {
+    "✅": "Dragoner zu Pferd",
+  }
+};
+
 // 2. Ready
 client.once("ready", () => {
   console.log(`✅ Bot is ready! Logged in as ${client.user.tag}`);
 });
+
+client.on("messageReactionAdd", async (reaction, user) => { ... });
+client.on("messageReactionRemove", async (reaction, user) => { ... });
 
 // 3. Slash Command Handler
 client.on("interactionCreate", async interaction => {
@@ -37,7 +49,7 @@ client.on("interactionCreate", async interaction => {
     const NEXT_RANK_POINTS = 20;
 
     try {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: 64 }); // 64 = EPHEMERAL
       const channel = interaction.channel;
       const author = interaction.member;
       const targetUser = options.getUser("userid");
@@ -52,7 +64,7 @@ client.on("interactionCreate", async interaction => {
       }
 
       if (!targetMember.roles.cache.some(r => r.name === VERIFIED_ROLE)) {
-        return interaction.reply({ content: "❌ That user isn't verified.", ephemeral: true });
+        return interaction.editReply({ content: "❌ That user isn't verified." }); // ✅ correct
       }
 
       const robloxName = targetMember.nickname || targetUser.username;
@@ -103,17 +115,6 @@ client.on("interactionCreate", async interaction => {
   }
 
   // === Reaction role ===
-const reactionRolesConfig = {
-  "1381632311992258755": {
-    "✅": "Dragoner zu Fuß",
-  },
-  "1381635539169706044": {
-    "✅": "Dragoner zu Pferd",
-  }
-};
-
-client.on("messageReactionAdd", async (reaction, user) => {
-  // Fetch partials if needed
   if (reaction.partial) await reaction.fetch();
   if (reaction.message.partial) await reaction.message.fetch();
   if (user.bot) return;
