@@ -26,8 +26,25 @@ const reactionRolesConfig = {
 };
 
 // 2. Ready
-client.once("ready", () => {
+client.once("ready", async () => {
   console.log(`✅ Bot is ready! Logged in as ${client.user.tag}`);
+
+  const channelsToWatch = [
+    { channelId: "1381632309935353896", messageId: "1381632311992258755" }, // Fuß
+    { channelId: "1381635538741903392", messageId: "1381635539169706044" }  // Pferd
+  ];
+
+  for (const { channelId, messageId } of channelsToWatch) {
+    try {
+      const channel = await client.channels.fetch(channelId);
+      if (channel?.isTextBased()) {
+        await channel.messages.fetch(messageId);
+        console.log(`📥 Cached message ${messageId} in channel ${channelId}`);
+      }
+    } catch (err) {
+      console.warn(`⚠️ Failed to cache message ${messageId} in ${channelId}:`, err.message);
+    }
+  }
 });
 
 client.on("messageReactionAdd", async (reaction, user) => {
