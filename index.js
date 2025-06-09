@@ -49,14 +49,29 @@ client.once("ready", async () => {
 
 client.on("messageReactionAdd", async (reaction, user) => {
   try {
-    if (reaction.partial) await reaction.fetch();
-    if (reaction.message.partial) await reaction.message.fetch();
-    if (user.bot) return;
+    console.log("🔔 messageReactionAdd triggered");
+
+    if (reaction.partial) {
+      console.log("📦 Reaction is partial, fetching...");
+      await reaction.fetch();
+    }
+    if (reaction.message.partial) {
+      console.log("📦 Message is partial, fetching...");
+      await reaction.message.fetch();
+    }
+
+    if (user.bot) {
+      console.log("🤖 Ignored bot reaction");
+      return;
+    }
 
     const messageId = reaction.message.id;
+    const emoji = reaction.emoji.name;
+
+    console.log(`👤 ${user.tag} reacted with "${emoji}" on message ${messageId}`);
 
     if (reactionRolesConfig[messageId]) {
-      console.log(`✅ Reaction detected on watched message ${messageId} by ${user.tag}`);
+      console.log(`✅ Reaction detected on watched message ${messageId}`);
     } else {
       console.log(`❌ Reaction on non-watched message: ${messageId}`);
     }
@@ -67,14 +82,29 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
 client.on("messageReactionRemove", async (reaction, user) => {
   try {
-    if (reaction.partial) await reaction.fetch();
-    if (reaction.message.partial) await reaction.message.fetch();
-    if (user.bot) return;
+    console.log("🔕 messageReactionRemove triggered");
+
+    if (reaction.partial) {
+      console.log("📦 Reaction is partial, fetching...");
+      await reaction.fetch();
+    }
+    if (reaction.message.partial) {
+      console.log("📦 Message is partial, fetching...");
+      await reaction.message.fetch();
+    }
+
+    if (user.bot) {
+      console.log("🤖 Ignored bot reaction");
+      return;
+    }
 
     const messageId = reaction.message.id;
+    const emoji = reaction.emoji.name;
+
+    console.log(`👤 ${user.tag} removed "${emoji}" reaction from message ${messageId}`);
 
     if (reactionRolesConfig[messageId]) {
-      console.log(`🗑️ Reaction removed from watched message ${messageId} by ${user.tag}`);
+      console.log(`🗑️ Reaction removed from watched message ${messageId}`);
     } else {
       console.log(`❌ Reaction removed from non-watched message: ${messageId}`);
     }
@@ -82,8 +112,6 @@ client.on("messageReactionRemove", async (reaction, user) => {
     console.error("❌ Error in messageReactionRemove:", err);
   }
 });
-
-
 
 // 3. Slash Command Handler
 client.on("interactionCreate", async interaction => {
