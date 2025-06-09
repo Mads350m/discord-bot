@@ -35,6 +35,10 @@ client.on("messageReactionAdd", async (reaction, user) => {
   if (reaction.message.partial) await reaction.message.fetch();
   if (user.bot) return;
 
+  console.log("🔥 Reaction detected!");
+
+  const guild = reaction.message.guild;
+
   const guild = reaction.message.guild;
   const member = await guild.members.fetch(user.id);
   const messageId = reaction.message.id;
