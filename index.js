@@ -129,20 +129,36 @@ client.on("messageReactionRemove", async (reaction, user) => {
       return;
     }
 
+    const guild = reaction.message.guild;
+    const member = await guild.members.fetch(user.id);
     const messageId = reaction.message.id;
     const emoji = reaction.emoji.name;
 
     console.log(`👤 ${user.tag} removed "${emoji}" reaction from message ${messageId}`);
 
-    if (reactionRolesConfig[messageId]) {
-      console.log(`🗑️ Reaction removed from watched message ${messageId}`);
+    const roleName = reactionRolesConfig[messageId]?.[emoji];
+    if (!roleName) {
+      console.log(`❌ Reaction removed from untracked message: ${messageId}`);
+      return;
+    }
+
+    const roleToRemove = guild.roles.cache.find(r => r.name === roleName);
+    if (!roleToRemove) {
+      console.log(`⚠️ Role "${roleName}" not found in server.`);
+      return;
+    }
+
+    if (member.roles.cache.has(roleToRemove.id)) {
+      await member.roles.remove(roleToRemove);
+      console.log(`🗑️ Removed role "${roleName}" from ${user.tag}`);
     } else {
-      console.log(`❌ Reaction removed from non-watched message: ${messageId}`);
+      console.log(`ℹ️ ${user.tag} does not have role "${roleName}"`);
     }
   } catch (err) {
     console.error("❌ Error in messageReactionRemove:", err);
   }
 });
+
 
 // 3. Slash Command Handler
 client.on("interactionCreate", async interaction => {
