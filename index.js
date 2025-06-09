@@ -48,50 +48,41 @@ client.once("ready", async () => {
 });
 
 client.on("messageReactionAdd", async (reaction, user) => {
-  if (reaction.partial) await reaction.fetch();
-  if (reaction.message.partial) await reaction.message.fetch();
-  if (user.bot) return;
+  try {
+    if (reaction.partial) await reaction.fetch();
+    if (reaction.message.partial) await reaction.message.fetch();
+    if (user.bot) return;
 
-  console.log("🔥 Reaction detected!");
+    const messageId = reaction.message.id;
 
-  const guild = reaction.message.guild; // ✅ only once
-  const member = await guild.members.fetch(user.id);
-  const messageId = reaction.message.id;
-  const emoji = reaction.emoji.name;
-
-  const roleName = reactionRolesConfig[messageId]?.[emoji];
-  if (!roleName) return;
-
-  const roleToGive = guild.roles.cache.find(r => r.name === roleName);
-  const unassignedRole = guild.roles.cache.find(r => r.name === "Unassigned");
-
-  if (roleToGive && !member.roles.cache.has(roleToGive.id)) {
-    await member.roles.add(roleToGive).catch(console.error);
-    if (unassignedRole && member.roles.cache.has(unassignedRole.id)) {
-      await member.roles.remove(unassignedRole).catch(console.error);
+    if (reactionRolesConfig[messageId]) {
+      console.log(`✅ Reaction detected on watched message ${messageId} by ${user.tag}`);
+    } else {
+      console.log(`❌ Reaction on non-watched message: ${messageId}`);
     }
+  } catch (err) {
+    console.error("❌ Error in messageReactionAdd:", err);
   }
 });
-
 
 client.on("messageReactionRemove", async (reaction, user) => {
-  if (reaction.partial) await reaction.fetch();
-  if (reaction.message.partial) await reaction.message.fetch();
-  if (user.bot) return;
+  try {
+    if (reaction.partial) await reaction.fetch();
+    if (reaction.message.partial) await reaction.message.fetch();
+    if (user.bot) return;
 
-  const guild = reaction.message.guild;
-  const member = await guild.members.fetch(user.id);
-  const messageId = reaction.message.id;
-  const emoji = reaction.emoji.name;
+    const messageId = reaction.message.id;
 
-  const roleName = reactionRolesConfig[messageId]?.[emoji];
-  if (!roleName) return;
-
-  const roleToRemove = guild.roles.cache.find(r => r.name === roleName);
-  if (roleToRemove && member.roles.cache.has(roleToRemove.id)) {
-    await member.roles.remove(roleToRemove).catch(console.error);
+    if (reactionRolesConfig[messageId]) {
+      console.log(`🗑️ Reaction removed from watched message ${messageId} by ${user.tag}`);
+    } else {
+      console.log(`❌ Reaction removed from non-watched message: ${messageId}`);
+    }
+  } catch (err) {
+    console.error("❌ Error in messageReactionRemove:", err);
   }
 });
+
 
 
 // 3. Slash Command Handler
