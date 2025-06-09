@@ -36,13 +36,23 @@ client.once("ready", async () => {
 
   for (const { channelId, messageId } of channelsToWatch) {
     try {
+      console.log(`🔍 Attempting to fetch channel ${channelId}`);
       const channel = await client.channels.fetch(channelId);
+
+      if (!channel) {
+        console.warn(`⚠️ Channel ${channelId} not found.`);
+        continue;
+      }
+
       if (channel?.isTextBased()) {
-        await channel.messages.fetch(messageId);
-        console.log(`📥 Cached message ${messageId} in channel ${channelId}`);
+        console.log(`🗃️ Attempting to fetch message ${messageId} in ${channelId}`);
+        const msg = await channel.messages.fetch(messageId);
+        console.log(`📥 Cached message ${msg.id} in channel ${channelId}`);
+      } else {
+        console.warn(`⚠️ Channel ${channelId} is not text-based`);
       }
     } catch (err) {
-      console.warn(`⚠️ Failed to cache message ${messageId} in ${channelId}:`, err.message);
+      console.warn(`❌ Failed to fetch message ${messageId} in ${channelId}: ${err.message}`);
     }
   }
 });
