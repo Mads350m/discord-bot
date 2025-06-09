@@ -102,6 +102,61 @@ client.on("interactionCreate", async interaction => {
     }
   }
 
+  // === Reaction role ===
+const reactionRolesConfig = {
+  "1381632311992258755": {
+    "✅": "Dragoner zu Fuß",
+  },
+  "1381635539169706044": {
+    "✅": "Dragoner zu Pferd",
+  }
+};
+
+client.on("messageReactionAdd", async (reaction, user) => {
+  // Fetch partials if needed
+  if (reaction.partial) await reaction.fetch();
+  if (reaction.message.partial) await reaction.message.fetch();
+  if (user.bot) return;
+
+  const guild = reaction.message.guild;
+  const member = await guild.members.fetch(user.id);
+  const messageId = reaction.message.id;
+  const emoji = reaction.emoji.name;
+
+  const roleName = reactionRolesConfig[messageId]?.[emoji];
+  if (!roleName) return;
+
+  const roleToGive = guild.roles.cache.find(r => r.name === roleName);
+  const unassignedRole = guild.roles.cache.find(r => r.name === "Unassigned");
+
+  if (roleToGive && !member.roles.cache.has(roleToGive.id)) {
+    await member.roles.add(roleToGive).catch(console.error);
+    if (unassignedRole && member.roles.cache.has(unassignedRole.id)) {
+      await member.roles.remove(unassignedRole).catch(console.error);
+    }
+  }
+});
+
+client.on("messageReactionRemove", async (reaction, user) => {
+  // Optional: removes the role when the user removes their reaction
+  if (reaction.partial) await reaction.fetch();
+  if (reaction.message.partial) await reaction.message.fetch();
+  if (user.bot) return;
+
+  const guild = reaction.message.guild;
+  const member = await guild.members.fetch(user.id);
+  const messageId = reaction.message.id;
+  const emoji = reaction.emoji.name;
+
+  const roleName = reactionRolesConfig[messageId]?.[emoji];
+  if (!roleName) return;
+
+  const roleToRemove = guild.roles.cache.find(r => r.name === roleName);
+  if (roleToRemove && member.roles.cache.has(roleToRemove.id)) {
+    await member.roles.remove(roleToRemove).catch(console.error);
+  }
+});
+
   // === /adduser ===
   if (commandName === "adduser") {
     try {
