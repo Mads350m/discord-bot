@@ -18,10 +18,10 @@ const client = new Client({
 
 const reactionRolesConfig = {
   "1381632311992258755": {
-    "✅": "Dragoner zu Fuß",
+    "✅": "Freikorps Infantry",
   },
   "1381635539169706044": {
-    "✅": "Dragoner zu Pferd",
+    "✅": "Freikorps Cavalry",
   }
 };
 
