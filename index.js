@@ -401,7 +401,12 @@ client.on("interactionCreate", async interaction => {
       for (const row of rows) {
         const rank = row._rawData[11]; // Column L: Rank name
         const points = row._rawData[12]; // Column M: Points required
-        if (rank && points && !isNaN(Number(points)) || points === "N/A") {
+
+        // Points should either be a number or explicitly "N/A"
+        const validPoints =
+          points === "N/A" || (points && !isNaN(Number(points)));
+
+        if (rank && validPoints) {
           rankMap.push({ rank, points });
         }
       }
