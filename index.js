@@ -577,10 +577,11 @@ if (commandName === "audit") {
         continue;
       }
 
-      const existingKills = Number(row.Kills) || 0;
-      const existingDeaths = Number(row.Deaths) || 0;
-      const existingAssists = Number(row.Assists) || 0;
-      const existingPoints = Number(row.CurrentPoints) || 0;
+const existingKills = Number(row.Kills) || 0;
+const existingDeaths = Number(row.Deaths) || 0;
+const existingAssists = Number(row.Assists) || 0;
+const existingPoints = Number(row.CurrentPoints) || 0;
+const existingBattles = Number(row.Battles) || 0
 
       // 4. Calculate points
       let bonusPoints = 10 * stats.entries; // Attendance
@@ -588,11 +589,15 @@ if (commandName === "audit") {
       if (stats.assists >= 20) bonusPoints += 1;
       if (robloxName === topfrag) bonusPoints += 5;
 
-      // 5. Update sheet
-      row.Kills = existingKills + stats.kills;
-      row.Deaths = existingDeaths + stats.deaths;
-      row.Assists = existingAssists + stats.assists;
-      row.CurrentPoints = existingPoints + bonusPoints;
+
+// 5. Update sheet
+row.Kills = existingKills + stats.kills;
+row.Deaths = existingDeaths + stats.deaths;
+row.Assists = existingAssists + stats.assists;
+row.CurrentPoints = existingPoints + bonusPoints;
+row.Battles = existingBattles + 1;
+
+
 
       const nextRankPoints = Number(row.NextRankPoints) || 0;
       row.PointsDiff = Math.max(0, nextRankPoints - row.CurrentPoints);
