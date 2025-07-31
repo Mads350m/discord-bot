@@ -584,10 +584,10 @@ const existingPoints = Number(row.CurrentPoints) || 0;
 const existingBattles = Number(row.Battles) || 0
 
       // 4. Calculate points
-      let bonusPoints = 10 * stats.entries; // Attendance
-      if (stats.kills >= 20) bonusPoints += 1;
+      let bonusPoints = 15 * stats.entries; // Attendance
+      if (stats.kills >= 20) bonusPoints += 5;
       if (stats.assists >= 20) bonusPoints += 1;
-      if (robloxName === topfrag) bonusPoints += 5;
+      if (robloxName === topfrag) bonusPoints += 10;
 
 
 // 5. Update sheet
