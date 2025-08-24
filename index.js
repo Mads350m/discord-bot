@@ -159,66 +159,6 @@ client.on("messageReactionRemove", async (reaction, user) => {
   }
 });
 
-// ---- helper: load canonical rank ladder from columns L:M ----
-async function loadRankLadder(sheet) {
-  await sheet.loadCells('L1:M100'); // adjust if your list is longer
-
-  const rankOrder = [];
-  const rankPoints = {};
-
-  for (let r = 1; r <= 100; r++) {
-    const rankCell = sheet.getCell(r - 1, 11); // column L
-    const ptsCell  = sheet.getCell(r - 1, 12); // column M
-
-    const rank = (rankCell?.value ?? '').toString().trim();
-    const raw = (ptsCell?.value ?? '').toString().trim();
-
-    if (!rank) continue;
-    if (rankOrder.includes(rank)) continue;
-
-    const points = raw.toUpperCase?.() === 'N/A'
-      ? 'N/A'
-      : (raw ? Number(raw) : 0);
-
-    rankOrder.push(rank);
-    rankPoints[rank] = points;
-  }
-
-  if (rankOrder.length === 0) {
-    throw new Error('Rank ladder not found in columns L:M');
-  }
-
-  return { rankOrder, rankPoints };
-}
-
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-async function saveRowWithRetry(row) {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      await row.save();
-      return;
-    } catch (err) {
-      // Back off on quota errors and retry
-      if (String(err?.message || '').includes('Quota exceeded') || String(err?.message || '').includes('[429]')) {
-        const delay = Math.min(15000, 1000 * Math.pow(2, attempt)) + Math.floor(Math.random() * 300);
-        await sleep(delay);
-        continue;
-      }
-      throw err; // non-quota error -> bubble up
-    }
-  }
-  throw new Error('Gave up saving row after repeated 429s');
-}
-
-// helper setter: marks row as 'changed' only when needed
-function setIfChanged(row, key, value, changedRef) {
-  const prev = row[key];
-  if ((prev ?? '') !== (value ?? '')) {
-    row[key] = value;
-    changedRef.changed = true;
-  }
-}
 
 // 3. Slash Command Handler
 client.on("interactionCreate", async interaction => {
@@ -243,23 +183,22 @@ client.on("interactionCreate", async interaction => {
     const NEXT_RANK_POINTS = 20;
 
     try {
-      await interaction.deferReply({ ephemeral: true });
-
+      await interaction.deferReply({ flags: 64 }); // 64 = EPHEMERAL
       const channel = interaction.channel;
       const author = interaction.member;
       const targetUser = options.getUser("userid");
       const targetMember = await interaction.guild.members.fetch(targetUser.id);
 
       if (channel.name !== ENLIST_CHANNEL) {
-        return interaction.editReply({ content: "❌ Use this command in #enlistment only." });
+        return interaction.reply({ content: "❌ Use this command in #enlistment only.", ephemeral: true });
       }
 
       if (!author.roles.cache.some(r => r.name === ADMIN_ROLE)) {
-        return interaction.editReply({ content: "❌ Only admins can use this command." });
+        return interaction.reply({ content: "❌ Only admins can use this command.", ephemeral: true });
       }
 
       if (!targetMember.roles.cache.some(r => r.name === VERIFIED_ROLE)) {
-        return interaction.editReply({ content: "❌ That user isn't verified." });
+        return interaction.editReply({ content: "❌ That user isn't verified." }); // ✅ correct
       }
 
       const robloxName = targetMember.nickname || targetUser.username;
@@ -305,7 +244,7 @@ client.on("interactionCreate", async interaction => {
       }
     } catch (err) {
       console.error("❌ Error handling /enlist:", err);
-      await interaction.editReply({ content: "⚠️ Something went wrong while enlisting this user." });
+      interaction.reply({ content: "⚠️ Something went wrong while enlisting this user.", ephemeral: true });
     }
   }
 
@@ -315,7 +254,6 @@ client.on("interactionCreate", async interaction => {
       const targetUser = options.getUser("userid");
       const targetMember = await interaction.guild.members.fetch(targetUser.id);
       const robloxName = targetMember.nickname || targetUser.username;
-
       const doc = new GoogleSpreadsheet(SHEET_ID);
       await doc.useServiceAccountAuth(creds);
       await doc.loadInfo();
@@ -427,7 +365,7 @@ client.on("interactionCreate", async interaction => {
           await interaction.editReply({ content: `📦 Importing members... ${added}/${total} done` });
         }
 
-        await sleep(1200);
+        await new Promise(resolve => setTimeout(resolve, 1200));
       }
 
       await interaction.editReply({ content: `✅ Imported ${added} members to the sheet from the server.` });
@@ -458,84 +396,71 @@ client.on("interactionCreate", async interaction => {
       const sheet = doc.sheetsByTitle[SHEET_NAME];
       const rows = await sheet.getRows();
 
-      // ✅ Build canonical rank ladder from the dedicated rank table in columns L:M only
-      await sheet.loadCells('L1:M100'); // adjust if your list is longer
-      const rankOrder = [];
-      const rankPoints = {}; // { rankName: number | "N/A" }
+      const rankMap = [];
 
-      for (let r = 1; r <= 100; r++) {
-        const rankCell = sheet.getCell(r - 1, 11); // L (0-based index 11)
-        const ptsCell  = sheet.getCell(r - 1, 12); // M (0-based index 12)
+      for (const row of rows) {
+        const rank = row._rawData[11]; // Column L: Rank name
+        const points = row._rawData[12]; // Column M: Points required
 
-        const rank = (rankCell?.value ?? '').toString().trim();
-        const raw  = (ptsCell?.value ?? '').toString().trim();
+        // Points should either be a number or explicitly "N/A"
+        const validPoints =
+          points === "N/A" || (points && !isNaN(Number(points)));
 
-        if (!rank) continue;                    // skip blanks
-        if (rankOrder.includes(rank)) continue; // skip duplicates
-
-        const points = raw.toUpperCase?.() === 'N/A'
-          ? 'N/A'
-          : (raw ? Number(raw) : 0);
-
-        rankOrder.push(rank);
-        rankPoints[rank] = points;
+        if (rank && validPoints) {
+          rankMap.push({ rank, points });
+        }
       }
 
       const promotions = [];
 
       for (const row of rows) {
         const userId = row.DiscordUserID;
-        const oldRank = (row.OldRank || '').trim();
+        const oldRank = row.OldRank;
         const currentPoints = Number(row.CurrentPoints || 0);
         const manualPromotion = (row.ManualPromotion || "").toLowerCase() === "yes";
 
         if (!userId || !oldRank) continue;
 
-        const currentIndex = rankOrder.indexOf(oldRank);
+        const currentIndex = rankMap.findIndex(r => r.rank === oldRank);
         if (currentIndex === -1) continue;
 
         const nextIndex = currentIndex + 1;
-        const nextRank = rankOrder[nextIndex] || oldRank; // if at top, stay
-        const nextReq = rankPoints[nextRank];
+        if (!rankMap[nextIndex]) continue;
 
-        // Manual-only next rank (no flag) → just update "what's next" and skip saving if unchanged
-        if (nextReq === "N/A" && !manualPromotion) {
-          const changed = { changed: false };
-          setIfChanged(row, 'NextRank', nextRank, changed);
-          setIfChanged(row, 'NextRankPoints', 0, changed);
-          setIfChanged(row, 'PointsDiff', 0, changed);
+        const nextRank = rankMap[nextIndex].rank;
+        const nextPointsReq = rankMap[nextIndex].points;
 
-          if (changed.changed) {
-            await saveRowWithRetry(row);
-            await sleep(1200);
-          }
-          continue;
-        }
+        if (nextPointsReq === "N/A" && !manualPromotion) continue;
 
-        const numericRequirement = Number(nextReq);
+        const numericRequirement = Number(nextPointsReq);
+
         const eligible =
           manualPromotion ||
           (!isNaN(numericRequirement) && currentPoints >= numericRequirement);
 
-        // Update fields & save ONLY if changed
-        const nextReqNum = isNaN(numericRequirement) ? 0 : numericRequirement;
+        // Always update next rank info (even if not promoted)
+        row.NextRank = nextRank;
+        row.NextRankPoints = isNaN(numericRequirement) ? 0 : numericRequirement;
 
-        const changed = { changed: false };
-        setIfChanged(row, 'NextRank', nextRank, changed);
-        setIfChanged(row, 'NextRankPoints', nextReqNum, changed);
-        setIfChanged(row, 'PointsDiff', Math.max(0, nextReqNum - currentPoints), changed);
+        // If eligible, promote
+        if (eligible) {
+          promotions.push({
+            userId,
+            oldRank,
+            newRank: nextRank,
+          });
 
-        if (eligible && nextRank !== oldRank) {
-          promotions.push({ userId, oldRank, newRank: nextRank });
-          setIfChanged(row, 'OldRank', oldRank, changed);   // keep current rank as OldRank
-          setIfChanged(row, 'NewRank', nextRank, changed);  // set the new rank
-          setIfChanged(row, 'ManualPromotion', '', changed);
+          row.OldRank = row.NewRank;
+          row.NewRank = nextRank;
+          row.PointsDiff = isNaN(numericRequirement)
+            ? 0
+            : numericRequirement - currentPoints;
+          row.ManualPromotion = ""; // Reset manual flag
         }
 
-        if (changed.changed) {
-          await saveRowWithRetry(row);
-          await sleep(1200); // ~50 writes/minute
-        }
+        // Save the row regardless
+        await row.save();
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Throttle writes to avoid rate limit
       }
 
       const logChannel = interaction.guild.channels.cache.get(BOTLOGS_CHANNEL_ID);
@@ -563,6 +488,7 @@ client.on("interactionCreate", async interaction => {
           }
         }
 
+        // Announce promotions
         const lines = promotions.map(
           p => `<:horsie:1367555119377551510> ${p.oldRank} → ${p.newRank}  [] <@${p.userId}>`
         ).join("\n");
@@ -573,6 +499,7 @@ client.on("interactionCreate", async interaction => {
           await announceChannel.send(announcement);
         }
 
+        // Log summary
         if (logChannel?.isTextBased()) {
           const logMsg = `📅 Promotions run on ${timestamp}:\n` +
             promotions.map(p => `<@${p.userId}>: ${p.oldRank} → ${p.newRank}`).join("\n");
@@ -592,115 +519,121 @@ client.on("interactionCreate", async interaction => {
     }
   }
 
-  // === /audit ===
-  if (commandName === "audit") {
-    try {
-      await interaction.deferReply({ ephemeral: true });
-      const input = options.getString("data");
-      const PERFORMANCE_CHANNEL_ID = "1375629618039619584";
+// === /audit ===
+if (commandName === "audit") {
+  try {
+    await interaction.deferReply({ ephemeral: true }); // 👈 added
+    const input = options.getString("data");
+    const PERFORMANCE_CHANNEL_ID = "1375629618039619584";
 
-      // 1. Parse and accumulate stats per user
-      const lines = input.trim().split("!");
-      const userStats = {};
+    // 1. Parse and accumulate stats per user
+    const lines = input.trim().split("!");
+    const userStats = {};
 
-      for (const line of lines) {
-        const [name, killsStr, deathsStr, assistsStr] = line.split(",");
-        const kills = parseInt(killsStr);
-        const deaths = parseInt(deathsStr);
-        const assists = parseInt(assistsStr);
-        const match = name.match(/\(@(.+?)\)$/);
-        const key = match ? match[1].trim() : name.trim();
+    for (const line of lines) {
+      const [name, killsStr, deathsStr, assistsStr] = line.split(",");
+      const kills = parseInt(killsStr);
+      const deaths = parseInt(deathsStr);
+      const assists = parseInt(assistsStr);
+      const match = name.match(/\(@(.+?)\)$/); // extracts what's inside the final (@...)
+      const key = match ? match[1].trim() : name.trim(); // fallback to full if no match
 
-        if (!userStats[key]) {
-          userStats[key] = { kills: 0, deaths: 0, assists: 0, entries: 0 };
-        }
-        userStats[key].kills += kills;
-        userStats[key].deaths += deaths;
-        userStats[key].assists += assists;
-        userStats[key].entries += 1;
+
+      if (!userStats[key]) {
+        userStats[key] = { kills: 0, deaths: 0, assists: 0, entries: 0 };
       }
 
-      // 2. Determine topfrag
-      let topfrag = null;
-      let maxKills = -1;
-      for (const [name, stats] of Object.entries(userStats)) {
-        if (stats.kills > maxKills) {
-          maxKills = stats.kills;
-          topfrag = name;
-        }
-      }
-
-      // 3. Load sheet
-      const doc = new GoogleSpreadsheet(SHEET_ID);
-      await doc.useServiceAccountAuth(creds);
-      await doc.loadInfo();
-      const sheet = doc.sheetsByTitle[SHEET_NAME];
-      const rows = await sheet.getRows();
-
-      const replySummary = [];
-      const announceSummary = [];
-
-      for (const [robloxName, stats] of Object.entries(userStats)) {
-        const row = rows.find(r => r.RobloxUsername?.toLowerCase() === robloxName.toLowerCase());
-
-        if (!row) {
-          replySummary.push(`⚠️ ${robloxName}: not found in sheet.`);
-          continue;
-        }
-
-        const existingKills = Number(row.Kills) || 0;
-        const existingDeaths = Number(row.Deaths) || 0;
-        const existingAssists = Number(row.Assists) || 0;
-        const existingPoints = Number(row.CurrentPoints) || 0;
-        const existingBattles = Number(row.Battles) || 0;
-
-        // 4. Calculate points
-        let bonusPoints = 15 * stats.entries; // Attendance
-        if (stats.kills >= 20) bonusPoints += 5;
-        if (stats.assists >= 20) bonusPoints += 1;
-        if (robloxName === topfrag) bonusPoints += 10;
-
-        // 5. Update sheet
-        row.Kills = existingKills + stats.kills;
-        row.Deaths = existingDeaths + stats.deaths;
-        row.Assists = existingAssists + stats.assists;
-        row.CurrentPoints = existingPoints + bonusPoints;
-        row.Battles = existingBattles + 1;
-
-        const nextRankPoints = Number(row.NextRankPoints) || 0;
-        row.PointsDiff = Math.max(0, nextRankPoints - row.CurrentPoints);
-
-        await saveRowWithRetry(row);
-        await sleep(1200);
-
-        const statLine = `✅ ${robloxName}: +${bonusPoints} points (${stats.kills}K/${stats.deaths}D/${stats.assists}A)`;
-        replySummary.push(statLine);
-        announceSummary.push(statLine);
-      }
-
-      // 6. Send reply to user
-      await interaction.editReply({
-        content: replySummary.join("\n").slice(0, 2000)
-      });
-
-      // 7. Send announcement to channel
-      const announceChannel = interaction.guild.channels.cache.get(PERFORMANCE_CHANNEL_ID);
-      if (announceChannel?.isTextBased()) {
-        const announcement =
-          `Todays battles performance:\n\n` +
-          announceSummary.join("\n") +
-          `\n\n🏆 Topfragger: ${topfrag} with ${maxKills} kills\n\nGood job everyone!`;
-
-        await announceChannel.send(announcement);
-      }
-    } catch (err) {
-      console.error("❌ Error in /audit:", err);
-      await interaction.editReply({
-        content: "⚠️ Something went wrong during audit processing."
-      });
+      userStats[key].kills += kills;
+      userStats[key].deaths += deaths;
+      userStats[key].assists += assists;
+      userStats[key].entries += 1;
     }
-  }
 
+    // 2. Determine topfrag
+    let topfrag = null;
+    let maxKills = -1;
+    for (const [name, stats] of Object.entries(userStats)) {
+      if (stats.kills > maxKills) {
+        maxKills = stats.kills;
+        topfrag = name;
+      }
+    }
+
+    // 3. Load sheet
+    const doc = new GoogleSpreadsheet(SHEET_ID);
+    await doc.useServiceAccountAuth(creds);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByTitle[SHEET_NAME];
+    const rows = await sheet.getRows();
+
+    let replySummary = [];
+    let announceSummary = [];
+
+    for (const [robloxName, stats] of Object.entries(userStats)) {
+      const row = rows.find(r => r.RobloxUsername?.toLowerCase() === robloxName.toLowerCase());
+
+      if (!row) {
+        replySummary.push(`⚠️ ${robloxName}: not found in sheet.`);
+        continue;
+      }
+
+const existingKills = Number(row.Kills) || 0;
+const existingDeaths = Number(row.Deaths) || 0;
+const existingAssists = Number(row.Assists) || 0;
+const existingPoints = Number(row.CurrentPoints) || 0;
+const existingBattles = Number(row.Battles) || 0
+
+      // 4. Calculate points
+      let bonusPoints = 15 * stats.entries; // Attendance
+      if (stats.kills >= 20) bonusPoints += 5;
+      if (stats.assists >= 20) bonusPoints += 1;
+      if (robloxName === topfrag) bonusPoints += 10;
+
+
+// 5. Update sheet
+row.Kills = existingKills + stats.kills;
+row.Deaths = existingDeaths + stats.deaths;
+row.Assists = existingAssists + stats.assists;
+row.CurrentPoints = existingPoints + bonusPoints;
+row.Battles = existingBattles + 1;
+
+
+
+      const nextRankPoints = Number(row.NextRankPoints) || 0;
+      row.PointsDiff = Math.max(0, nextRankPoints - row.CurrentPoints);
+
+      await row.save();
+
+      // Add to both summaries
+      const statLine = `✅ ${robloxName}: +${bonusPoints} points (${stats.kills}K/${stats.deaths}D/${stats.assists}A)`;
+      replySummary.push(statLine);
+      announceSummary.push(statLine);
+    }
+
+    // 6. Send reply to user
+await interaction.editReply({
+  content: replySummary.join("\n").slice(0, 2000)
+});
+
+    // 7. Send announcement to channel
+    const announceChannel = interaction.guild.channels.cache.get(PERFORMANCE_CHANNEL_ID);
+    if (announceChannel?.isTextBased()) {
+      const announcement =
+        `Todays battles performance:\n\n` +
+        announceSummary.join("\n") +
+        `\n\n🏆 Topfragger: ${topfrag} with ${maxKills} kills\n\nGood job everyone!`;
+
+      await announceChannel.send(announcement);
+    }
+
+  } catch (err) {
+    console.error("❌ Error in /audit:", err);
+    await interaction.reply({
+      content: "⚠️ Something went wrong during audit processing.",
+      ephemeral: true
+    });
+  }
+}
   // === /update ===
   if (commandName === "update") {
     try {
@@ -767,7 +700,6 @@ client.on("interactionCreate", async interaction => {
       });
     }
   }
-
   // === /stats USERID ===
   if (commandName === "stats") {
     try {
@@ -804,4 +736,12 @@ client.on("interactionCreate", async interaction => {
       });
     }
   }
+});
+
+// 4. Login
+client.login(process.env.DISCORD_TOKEN);
+
+// 5. Background error logging
+process.on("unhandledRejection", err => {
+  console.error("Unhandled promise rejection:", err);
 });
