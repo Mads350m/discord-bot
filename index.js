@@ -191,6 +191,35 @@ async function loadRankLadder(sheet) {
   return { rankOrder, rankPoints };
 }
 
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function saveRowWithRetry(row) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await row.save();
+      return;
+    } catch (err) {
+      // Back off on quota errors and retry
+      if (String(err?.message || '').includes('Quota exceeded') || String(err?.message || '').includes('[429]')) {
+        const delay = Math.min(15000, 1000 * Math.pow(2, attempt)) + Math.floor(Math.random() * 300);
+        await sleep(delay);
+        continue;
+      }
+      throw err; // non-quota error -> bubble up
+    }
+  }
+  throw new Error('Gave up saving row after repeated 429s');
+}
+
+// helper setter: marks row as 'changed' only when needed
+function setIfChanged(row, key, value, changedRef) {
+  const prev = row[key];
+  if ((prev ?? '') !== (value ?? '')) {
+    row[key] = value;
+    changedRef.changed = true;
+  }
+}
+
 // 3. Slash Command Handler
 client.on("interactionCreate", async interaction => {
   if (!interaction.isChatInputCommand()) return;
@@ -467,14 +496,18 @@ if (interaction.commandName === "runpromotions") {
       const nextRank = rankOrder[nextIndex] || oldRank; // if at top, stay
       const nextReq = rankPoints[nextRank];
 
-      // If next rank is manual-only and not flagged, just keep “what’s next” info updated
+      // Manual-only next rank (no flag) → just update "what's next" and skip saving if unchanged
       if (nextReq === "N/A" && !manualPromotion) {
-        row.NextRank = nextRank;
-        row.NextRankPoints = 0;
-        row.PointsDiff = 0;
-        await row.save();
-        await new Promise(res => setTimeout(res, 400));
-        continue;
+        const changed = { changed: false };
+        setIfChanged(row, 'NextRank', nextRank, changed);
+        setIfChanged(row, 'NextRankPoints', 0, changed);
+        setIfChanged(row, 'PointsDiff', 0, changed);
+
+        if (changed.changed) {
+          await saveRowWithRetry(row);
+          await sleep(1200);
+        }
+        continue; // ✅ correctly close this branch
       }
 
       const numericRequirement = Number(nextReq);
@@ -482,24 +515,26 @@ if (interaction.commandName === "runpromotions") {
         manualPromotion ||
         (!isNaN(numericRequirement) && currentPoints >= numericRequirement);
 
-      // Always update “next rank” fields
-      row.NextRank = nextRank;
-      row.NextRankPoints = isNaN(numericRequirement) ? 0 : numericRequirement;
-      row.PointsDiff = Math.max(
-        0,
-        (isNaN(numericRequirement) ? 0 : numericRequirement) - currentPoints
-      );
+      // === SECTION B: update fields & save ONLY if changed ===
+      const nextReqNum = isNaN(numericRequirement) ? 0 : numericRequirement;
 
-      // If eligible, promote — keep OldRank as the current rank (don’t copy from NewRank)
+      const changed = { changed: false };
+      setIfChanged(row, 'NextRank', nextRank, changed);
+      setIfChanged(row, 'NextRankPoints', nextReqNum, changed);
+      setIfChanged(row, 'PointsDiff', Math.max(0, nextReqNum - currentPoints), changed);
+
       if (eligible && nextRank !== oldRank) {
         promotions.push({ userId, oldRank, newRank: nextRank });
-        row.OldRank = oldRank;     // ✅ correct
-        row.NewRank = nextRank;    // ✅ correct
-        row.ManualPromotion = "";  // reset manual flag
+        setIfChanged(row, 'OldRank', oldRank, changed);   // keep current rank as OldRank
+        setIfChanged(row, 'NewRank', nextRank, changed);  // set the new rank
+        setIfChanged(row, 'ManualPromotion', '', changed);
       }
 
-      await row.save();
-      await new Promise(res => setTimeout(res, 400)); // gentle throttle
+      if (changed.changed) {
+        await saveRowWithRetry(row);
+        await sleep(1200); // ~50 writes/minute
+      }
+      // (No unconditional row.save() here!)
     }
 
     const logChannel = interaction.guild.channels.cache.get(BOTLOGS_CHANNEL_ID);
@@ -557,7 +592,7 @@ if (interaction.commandName === "runpromotions") {
     await interaction.editReply({ content: "⚠️ Failed to process promotions." });
   }
 }
-
+}
 
 // === /audit ===
 if (commandName === "audit") {
