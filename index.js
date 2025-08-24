@@ -159,6 +159,37 @@ client.on("messageReactionRemove", async (reaction, user) => {
   }
 });
 
+// ---- helper: load canonical rank ladder from columns L:M ----
+async function loadRankLadder(sheet) {
+  await sheet.loadCells('L1:M100'); // adjust if your list is longer
+
+  const rankOrder = [];
+  const rankPoints = {};
+
+  for (let r = 1; r <= 100; r++) {
+    const rankCell = sheet.getCell(r - 1, 11); // column L
+    const ptsCell  = sheet.getCell(r - 1, 12); // column M
+
+    const rank = (rankCell?.value ?? '').toString().trim();
+    const raw = (ptsCell?.value ?? '').toString().trim();
+
+    if (!rank) continue;
+    if (rankOrder.includes(rank)) continue;
+
+    const points = raw.toUpperCase?.() === 'N/A'
+      ? 'N/A'
+      : (raw ? Number(raw) : 0);
+
+    rankOrder.push(rank);
+    rankPoints[rank] = points;
+  }
+
+  if (rankOrder.length === 0) {
+    throw new Error('Rank ladder not found in columns L:M');
+  }
+
+  return { rankOrder, rankPoints };
+}
 
 // 3. Slash Command Handler
 client.on("interactionCreate", async interaction => {
@@ -375,149 +406,158 @@ client.on("interactionCreate", async interaction => {
     }
   }
 
-  // === /runpromotions ===
-  if (interaction.commandName === "runpromotions") {
-    const HIGHCOMMAND_ROLE = "highcode";
+// === /runpromotions ===
+if (interaction.commandName === "runpromotions") {
+  const HIGHCOMMAND_ROLE = "highcode";
 
-    if (!interaction.member.roles.cache.some(r => r.name === HIGHCOMMAND_ROLE)) {
-      return interaction.reply({
-        content: "❌ Only members of HighCode can run promotions.",
-        ephemeral: true,
-      });
-    }
-
-    await interaction.deferReply({ ephemeral: true });
-
-    try {
-      const doc = new GoogleSpreadsheet(SHEET_ID);
-      await doc.useServiceAccountAuth(creds);
-      await doc.loadInfo();
-
-      const sheet = doc.sheetsByTitle[SHEET_NAME];
-      const rows = await sheet.getRows();
-
-      const rankMap = [];
-
-      for (const row of rows) {
-        const rank = row._rawData[11]; // Column L: Rank name
-        const points = row._rawData[12]; // Column M: Points required
-
-        // Points should either be a number or explicitly "N/A"
-        const validPoints =
-          points === "N/A" || (points && !isNaN(Number(points)));
-
-        if (rank && validPoints) {
-          rankMap.push({ rank, points });
-        }
-      }
-
-      const promotions = [];
-
-      for (const row of rows) {
-        const userId = row.DiscordUserID;
-        const oldRank = row.OldRank;
-        const currentPoints = Number(row.CurrentPoints || 0);
-        const manualPromotion = (row.ManualPromotion || "").toLowerCase() === "yes";
-
-        if (!userId || !oldRank) continue;
-
-        const currentIndex = rankMap.findIndex(r => r.rank === oldRank);
-        if (currentIndex === -1) continue;
-
-        const nextIndex = currentIndex + 1;
-        if (!rankMap[nextIndex]) continue;
-
-        const nextRank = rankMap[nextIndex].rank;
-        const nextPointsReq = rankMap[nextIndex].points;
-
-        if (nextPointsReq === "N/A" && !manualPromotion) continue;
-
-        const numericRequirement = Number(nextPointsReq);
-
-        const eligible =
-          manualPromotion ||
-          (!isNaN(numericRequirement) && currentPoints >= numericRequirement);
-
-        // Always update next rank info (even if not promoted)
-        row.NextRank = nextRank;
-        row.NextRankPoints = isNaN(numericRequirement) ? 0 : numericRequirement;
-
-        // If eligible, promote
-        if (eligible) {
-          promotions.push({
-            userId,
-            oldRank,
-            newRank: nextRank,
-          });
-
-          row.OldRank = row.NewRank;
-          row.NewRank = nextRank;
-          row.PointsDiff = isNaN(numericRequirement)
-            ? 0
-            : numericRequirement - currentPoints;
-          row.ManualPromotion = ""; // Reset manual flag
-        }
-
-        // Save the row regardless
-        await row.save();
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Throttle writes to avoid rate limit
-      }
-
-      const logChannel = interaction.guild.channels.cache.get(BOTLOGS_CHANNEL_ID);
-      const announceChannel = interaction.guild.channels.cache.get(ANNOUNCEMENT_CHANNEL_ID);
-      const timestamp = new Date().toLocaleString();
-
-      if (promotions.length > 0) {
-        // Apply Discord role changes
-        for (const { userId, oldRank, newRank } of promotions) {
-          const member = await interaction.guild.members.fetch(userId).catch(() => null);
-          if (!member) continue;
-
-          const oldRole = interaction.guild.roles.cache.find(r => r.name === oldRank);
-          const newRole = interaction.guild.roles.cache.find(r => r.name === newRank);
-
-          try {
-            if (oldRole && member.roles.cache.has(oldRole.id)) {
-              await member.roles.remove(oldRole);
-            }
-            if (newRole && !member.roles.cache.has(newRole.id)) {
-              await member.roles.add(newRole);
-            }
-          } catch (e) {
-            console.warn(`Role update failed for ${userId}:`, e.message);
-          }
-        }
-
-        // Announce promotions
-        const lines = promotions.map(
-          p => `<:horsie:1367555119377551510> ${p.oldRank} → ${p.newRank}  [] <@${p.userId}>`
-        ).join("\n");
-
-        const announcement = `# 🌿 TO BE RAISED TO THE RANKS OF:\nThis week's dragoon promotions\n\n${lines}\n\nGood job everyone, keep up the good work!\n<@&1364050038623309886>`;
-
-        if (announceChannel?.isTextBased()) {
-          await announceChannel.send(announcement);
-        }
-
-        // Log summary
-        if (logChannel?.isTextBased()) {
-          const logMsg = `📅 Promotions run on ${timestamp}:\n` +
-            promotions.map(p => `<@${p.userId}>: ${p.oldRank} → ${p.newRank}`).join("\n");
-          await logChannel.send(logMsg);
-        }
-
-        await interaction.editReply({ content: `✅ ${promotions.length} users promoted.` });
-      } else {
-        await interaction.editReply({ content: `ℹ️ No eligible users for promotion.` });
-        if (logChannel?.isTextBased()) {
-          await logChannel.send(`📅 /runpromotions executed on ${timestamp} — No promotions.`);
-        }
-      }
-    } catch (err) {
-      console.error("❌ Error in /runpromotions:", err);
-      await interaction.editReply({ content: "⚠️ Failed to process promotions." });
-    }
+  if (!interaction.member.roles.cache.some(r => r.name === HIGHCOMMAND_ROLE)) {
+    return interaction.reply({
+      content: "❌ Only members of HighCode can run promotions.",
+      ephemeral: true,
+    });
   }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    const doc = new GoogleSpreadsheet(SHEET_ID);
+    await doc.useServiceAccountAuth(creds);
+    await doc.loadInfo();
+
+    const sheet = doc.sheetsByTitle[SHEET_NAME];
+    const rows = await sheet.getRows();
+
+    // ✅ Build canonical rank ladder from the dedicated rank table in columns L:M only
+    await sheet.loadCells('L1:M100'); // adjust if your list is longer
+    const rankOrder = [];
+    const rankPoints = {}; // { rankName: number | "N/A" }
+
+    for (let r = 1; r <= 100; r++) {
+      const rankCell = sheet.getCell(r - 1, 11); // L (0-based index 11)
+      const ptsCell  = sheet.getCell(r - 1, 12); // M (0-based index 12)
+
+      const rank = (rankCell?.value ?? '').toString().trim();
+      const raw  = (ptsCell?.value ?? '').toString().trim();
+
+      if (!rank) continue;                    // skip blanks
+      if (rankOrder.includes(rank)) continue; // skip duplicates
+
+      const points = raw.toUpperCase?.() === 'N/A'
+        ? 'N/A'
+        : (raw ? Number(raw) : 0);
+
+      rankOrder.push(rank);
+      rankPoints[rank] = points;
+    }
+
+    const promotions = [];
+
+    for (const row of rows) {
+      const userId = row.DiscordUserID;
+      const oldRank = (row.OldRank || '').trim();
+      const currentPoints = Number(row.CurrentPoints || 0);
+      const manualPromotion = (row.ManualPromotion || "").toLowerCase() === "yes";
+
+      if (!userId || !oldRank) continue;
+
+      const currentIndex = rankOrder.indexOf(oldRank);
+      if (currentIndex === -1) continue;
+
+      const nextIndex = currentIndex + 1;
+      const nextRank = rankOrder[nextIndex] || oldRank; // if at top, stay
+      const nextReq = rankPoints[nextRank];
+
+      // If next rank is manual-only and not flagged, just keep “what’s next” info updated
+      if (nextReq === "N/A" && !manualPromotion) {
+        row.NextRank = nextRank;
+        row.NextRankPoints = 0;
+        row.PointsDiff = 0;
+        await row.save();
+        await new Promise(res => setTimeout(res, 400));
+        continue;
+      }
+
+      const numericRequirement = Number(nextReq);
+      const eligible =
+        manualPromotion ||
+        (!isNaN(numericRequirement) && currentPoints >= numericRequirement);
+
+      // Always update “next rank” fields
+      row.NextRank = nextRank;
+      row.NextRankPoints = isNaN(numericRequirement) ? 0 : numericRequirement;
+      row.PointsDiff = Math.max(
+        0,
+        (isNaN(numericRequirement) ? 0 : numericRequirement) - currentPoints
+      );
+
+      // If eligible, promote — keep OldRank as the current rank (don’t copy from NewRank)
+      if (eligible && nextRank !== oldRank) {
+        promotions.push({ userId, oldRank, newRank: nextRank });
+        row.OldRank = oldRank;     // ✅ correct
+        row.NewRank = nextRank;    // ✅ correct
+        row.ManualPromotion = "";  // reset manual flag
+      }
+
+      await row.save();
+      await new Promise(res => setTimeout(res, 400)); // gentle throttle
+    }
+
+    const logChannel = interaction.guild.channels.cache.get(BOTLOGS_CHANNEL_ID);
+    const announceChannel = interaction.guild.channels.cache.get(ANNOUNCEMENT_CHANNEL_ID);
+    const timestamp = new Date().toLocaleString();
+
+    if (promotions.length > 0) {
+      // Apply Discord role changes
+      for (const { userId, oldRank, newRank } of promotions) {
+        const member = await interaction.guild.members.fetch(userId).catch(() => null);
+        if (!member) continue;
+
+        const oldRole = interaction.guild.roles.cache.find(r => r.name === oldRank);
+        const newRole = interaction.guild.roles.cache.find(r => r.name === newRank);
+
+        try {
+          if (oldRole && member.roles.cache.has(oldRole.id)) {
+            await member.roles.remove(oldRole);
+          }
+          if (newRole && !member.roles.cache.has(newRole.id)) {
+            await member.roles.add(newRole);
+          }
+        } catch (e) {
+          console.warn(`Role update failed for ${userId}:`, e.message);
+        }
+      }
+
+      // Announce promotions
+      const lines = promotions.map(
+        p => `<:horsie:1367555119377551510> ${p.oldRank} → ${p.newRank}  [] <@${p.userId}>`
+      ).join("\n");
+
+      const announcement = `# 🌿 TO BE RAISED TO THE RANKS OF:\nThis week's dragoon promotions\n\n${lines}\n\nGood job everyone, keep up the good work!\n<@&1364050038623309886>`;
+
+      if (announceChannel?.isTextBased()) {
+        await announceChannel.send(announcement);
+      }
+
+      // Log summary
+      if (logChannel?.isTextBased()) {
+        const logMsg = `📅 Promotions run on ${timestamp}:\n` +
+          promotions.map(p => `<@${p.userId}>: ${p.oldRank} → ${p.newRank}`).join("\n");
+        await logChannel.send(logMsg);
+      }
+
+      await interaction.editReply({ content: `✅ ${promotions.length} users promoted.` });
+    } else {
+      await interaction.editReply({ content: `ℹ️ No eligible users for promotion.` });
+      if (logChannel?.isTextBased()) {
+        await logChannel.send(`📅 /runpromotions executed on ${timestamp} — No promotions.`);
+      }
+    }
+  } catch (err) {
+    console.error("❌ Error in /runpromotions:", err);
+    await interaction.editReply({ content: "⚠️ Failed to process promotions." });
+  }
+}
+
 
 // === /audit ===
 if (commandName === "audit") {
